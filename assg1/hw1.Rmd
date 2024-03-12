@@ -1,5 +1,5 @@
 ---
-title: "Statistical Computing and Simulation: HW1"
+title: "Statistical Computing and Simulation: Assignment 1"
 author: |  
   | Deparment of Statistics,\ NCCU  
   | 葉佐晨 \   \   高崇哲
@@ -514,7 +514,7 @@ difference in the quantity between each group.
 
 ```{r}
 chisq.test(table(interval), p = rep(1/7, 7))
-set.seed(123) 
+set.seed(SEED) 
 gap_counts <- gap.test(lottery_numbers/42, 0.25, 0.75)
 result_vector <- numeric()
 for (i in c(0:3)) {
