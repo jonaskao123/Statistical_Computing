@@ -4,7 +4,7 @@ This repository is about the assignment of course of **Statistical Computing and
 
 ### Assignments 1
 
-1.  Mid-Square Method, LCG
+1.  Mid-Square Method and LCG
 2.  Producing Uniform Number
 3.  Normality Test
 4.  Independence Test
