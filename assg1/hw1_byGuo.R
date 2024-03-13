@@ -161,14 +161,28 @@ lottery_numbers <- c(
 interval <- cut(lottery_numbers, breaks = seq(0, 42, by = 6))
 hist(lottery_numbers, breaks = seq(0, 50, by = 6), main = "Histogram of Lottery Numbers", xlab = "Interval")
 chisq.test(table(interval), p = rep(1/7, 7))
-
 set.seed(123) 
-gap_counts <- gap.test(lottery_numbers/42, 0.25, 0.75)
-result_vector <- numeric()
-for (i in c(0:3)) {
-  a = 0.5*0.5^i
-  result_vector <- c(result_vector, a)
+
+sum_groups <- function(numbers, group_size) {
+  num_groups <- length(numbers) / group_size
+  group_sums <- sapply(1:num_groups, function(i) {
+    sum(numbers[((i - 1) * group_size + 1):(i * group_size)])
+  })
+  return(group_sums)
 }
-result_vector[4] <- 1 - sum(result_vector[1:3])
-observation <- c(25, 16,  11,  6) 
-chisq.test(observation, p = result_vector)
+
+group_sums <- sum_groups(lottery_numbers, 6)
+print(group_sums)
+
+dummy_variable_number <- ifelse(group_sums > 129, 1, 0)
+first_half <- dummy_variable_number[1:10]
+second_half <- dummy_variable_number[11:20]
+
+count_first_0 <- sum(first_half == 0)
+count_first_1 <- sum(first_half == 1)
+count_second_0 <- sum(second_half == 0)
+count_second_1 <- sum(second_half == 1)
+matrix_data <- matrix(c(count_first_0, count_second_0, count_first_1, count_second_1), nrow = 2, byrow = TRUE)
+
+print(matrix_data)
+chisq.test(matrix_data,correct = FALSE)
