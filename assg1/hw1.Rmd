@@ -514,7 +514,7 @@ difference in the quantity between each group.
 
 ```{r}
 chisq.test(table(interval), p = rep(1/7, 7))
-set.seed(123) 
+set.seed(SEED) 
 
 sum_groups <- function(numbers, group_size) {
   num_groups <- length(numbers) / group_size
