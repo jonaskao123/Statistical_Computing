@@ -260,14 +260,18 @@ cat("Average number of steps starting from mean:", mean_steps_from_mean, "\n")
 =
 10的普瓦松分配，並記錄轉換過程所需要的步數，從模擬100次的平均結果可以看出，從期望值出發所需要的步數，明顯少於從0出發，因此當$\lambda$很大時，建議從期望值開始轉換。
 
-Given the following matrix: $$
+Given the following matrix: 
+
+$$
 A = \begin{pmatrix}
 1 & 0.5 & 0.25 & 0.125 \\
 0.5 & 1 & 0.5 & 0.25 \\
 0.25 & 0.5 & 1 & 0.5 \\
 0.125 & 0.25 & 0.5 & 1 \\
 \end{pmatrix}
-$$ (a) Write a program to compute the Cholesky decomposition of A. To
+$$ 
+
+(a) Write a program to compute the Cholesky decomposition of A. To
 double check your result, use the command "chol" in R to verify the
 result. (b) Use the commands "eigen", "qr", and "svd" on A and check if
 these commands work properly.
