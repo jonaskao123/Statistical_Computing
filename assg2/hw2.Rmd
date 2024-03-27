@@ -1,0 +1,326 @@
+---
+title: 'Statistical Computing and Simulation: Assignment 2'
+author: "| Deparment of Statistics,\\ NCCU  \n| 葉佐晨 \\   \\   高崇哲\n| \\{112354016,112354020\\}@nccu.edu.tw\n"
+date: "`r Sys.Date()`"
+output:
+  word_document: default
+  html_document:
+    df_print: paged
+  pdf_document:
+    extra_dependencies:
+      ctex: UTF8
+editor_options:
+  markdown:
+    wrap: 72
+---
+
+# Statistical Computing and Simulation
+
+## Assignment 2, Due March 27/2024
+
+```{r message=FALSE, warning=FALSE}
+library(stats)
+library(randtests)
+```
+
+```{r}
+SEED <- 123
+```
+
+1.  We can use the command "arima.sim" in R to generate random numbers
+    from ARIMA models.
+
+<!-- -->
+
+(a) We generate 100 random numbers from AR(2) with parameter values
+    (𝜙1,𝜙2) = (θ, θ) and apply correlation between xi vs. xi+1 and xi
+    vs. xi+2 as a tool for verifying independence. You should repeat the
+    simulation at least 1,000 times and try different $\theta$ values,
+    such as $\theta$ = 0, 0.05, 0.10, 0.15, and 0.20.
+(b) Using ARIMA random numbers to evaluate the type-1 and type-2 errors
+    of various independence tests, e.g., Gap, Up-and-down, and
+    Permutation tests.
+
+(a).
+
+```{r echo=FALSE, warning=FALSE}
+theta_values <- c(0, 0.05, 0.1, 0.15, 0.2)
+
+set.seed(SEED)
+for (theta in theta_values) {
+  correlation1_values <- c()
+  correlation2_values <- c()
+  
+  for (i in 1:1000) {
+    arima_sim_data <- arima.sim(model = list(order = c(2,0,0), ar = c(theta, theta)), n = 100, sd = 1)
+    correlation1 <- cor(arima_sim_data[1:99], arima_sim_data[2:100])
+    correlation2 <- cor(arima_sim_data[1:98], arima_sim_data[3:100])
+    correlation1_values <- c(correlation1_values, correlation1)
+    correlation2_values <- c(correlation2_values, correlation2)
+  }
+  
+  avg_correlation1 <- mean(correlation1_values)
+  avg_correlation2 <- mean(correlation2_values)
+  
+  print(paste("When theta is", theta, ", the average correlation between x_i and x_i+1 is :", round(avg_correlation1, 5)), quote = FALSE)
+  print(paste("When theta is", theta, ", the average correlation between x_i and x_i+2 is :", round(avg_correlation2, 5)), quote = FALSE)
+}
+```
+
+我們使用不同的$\theta$值，從AR(2)進行了1000次的100個亂數模擬，從結果中我們可以看出，不管是$x_i$和$x_{i+1}$還是$x_i$和$x_{i+2}$的平均相關係數，當$\theta$值越大，平均相關係數也就越高。
+
+(b).
+
+```{r echo=FALSE, warning=FALSE}
+gapTest <- function(data, a, b) {
+  gap <- function(data, a, b) {
+    n <- length(data)
+    x <- c(1:n) * (a < data & data < b)
+    x1 <- x[x > 0]
+    y <- x1[-1] - x1[-length(x1)] - 1
+    return(table(y))
+  }
+  
+  gap_counts <- gap(data, a, b)
+  
+  vec <- gap_counts
+  
+  while (vec[length(vec)] < 5) {
+    vec <- c(vec[1:(length(vec) - 2)], vec[(length(vec) - 1)] + vec[length(vec)])
+  }
+  
+  result_vector <- numeric()
+  for (i in c(0:(length(vec) - 1))) {
+    a1 <- (b-a) * (1-b+a)^i
+    result_vector <- c(result_vector, a1)
+  }
+  
+  result_vector[length(result_vector)] <- 1 - sum(result_vector[1:(length(result_vector) - 1)])
+  
+  chisq.test(vec, p = result_vector)
+}
+
+numRej1 <- function(n, theta) {
+  t1err=0
+  for (i in 1:n){
+    set.seed(1+i)
+    data <- arima.sim(model = list(order = c(2,0,0), ar = c(theta, theta)), n = 100, sd = 1)
+    data <- data+abs(min(data))
+    data <- data/max(data)
+    x = gapTest(data,47/100,97/100)
+    if ((x$p.value)<=0.05) (t1err=t1err+1)
+  }
+  results <- (t1err/n)*100
+  cat("When theta is", theta, ", number of rejection is",(t1err/n)*100,"% in Gap test\n")
+}
+
+set.seed(SEED)
+for (theta in theta_values) {
+  numRej1(1000,theta)
+}
+
+permuteTest = function(data, k) {
+  permute <- function(data, k) {
+    y=rep(10,k)^c((k-1):0)
+    x=matrix(data,ncol = k,byrow = T)
+    x1=apply(x, 1, rank)
+    yy=apply(x1*y, 2, sum)
+    return(table(yy))
+  }
+  
+  permute_count <- permute(data, k)
+  prob <- rep(1/factorial(k), factorial(k))
+  chisq.test(permute_count, p = prob)
+}
+
+numRej2 <- function(n,theta) {
+  t1err = 0
+  for (i in 1:n) {
+    set.seed(1 + i)
+    data <- arima.sim(model = list(order = c(2,0,0), ar = c(theta, theta)), n = 300, sd = 1)
+    if (permuteTest(data, 3)$p.value <= 0.05) {
+      t1err = t1err + 1
+    }
+  }
+  results <- (t1err/n)*100
+  cat("When theta is", theta, ", number of rejection is",(t1err/n)*100,"% in Permutation test\n")
+}
+
+set.seed(SEED)
+for (theta in theta_values) {
+  numRej2(1000 , theta)
+}
+
+
+numRej3 <- function(n,theta) {
+  t1err=0
+  for (i in 1:n) {
+    data<-arima.sim(model = list(order = c(2,0,0), ar = c(theta, theta)), n = 100, sd = 1)
+    x=runs.test(data)
+    if ((x$p.value) <= 0.05) (t1err=t1err+1)
+  }
+  cat("When theta is", theta, ", number of rejection is",(t1err/n)*100,"% in Run test\n")
+}
+
+set.seed(SEED)
+for (theta in theta_values) {
+  numRej3(1000, theta)
+}
+```
+
+Type I error 算法 : $\theta$ = 0 資料為獨立,故於此情況下計算拒絕個數。
+Type II error 算法 : $\theta$ \> 0
+資料為不獨立,於此情況下計算不拒絕個數。
+
+Gap test :
+
+$\theta$ = 0, Type I error = 0.342
+
+$\theta$ = 0.05, Type II error = 0.657
+
+$\theta$ = 0.1, Type II error = 0.629
+
+$\theta$ = 0.15, Type II error = 0.608
+
+$\theta$ = 0.2, Type II error = 0.552
+
+Permutation test :
+
+$\theta$ = 0, Type I error = 0.054
+
+$\theta$ = 0.05, Type II error = 0.958
+
+$\theta$ = 0.1, Type II error = 0.951
+
+$\theta$ = 0.15, Type II error = 0.962
+
+$\theta$ = 0.2, Type II error = 0.955
+
+Run test :
+
+$\theta$ = 0, Type I error = 0.066
+
+$\theta$ = 0.05, Type II error = 0.925
+
+$\theta$ = 0.1, Type II error = 0.880
+
+$\theta$ = 0.15, Type II error = 0.775
+
+$\theta$ = 0.2, Type II error = 0.624
+
+從結果比較中我們可以看出，Permutation test對於
+$\theta$值的變化敏感程度較低，相反地，Gap test與Run
+test能夠反映出$\theta$值越大，拒絕$\theta$ = 0 的比例越高。
+
+3.  Write a program to generate random numbers from Poisson
+    distribution. This program has the function for choosing the
+    starting points, such as from starting from 0, mean, or median. In
+    addition, this program can record the numbers of steps needed for
+    generating a random number. Similar to what we saw in class, if
+    $\lambda$ = 10, compare the numbers of steps needed if starting from
+    0 and mean.
+
+```{r echo=FALSE, warning=FALSE}
+generatePoisson <- function(lambda, starting_point) {
+  
+  if (starting_point == "mean") {
+    i <- lambda
+  } else if (starting_point == "0") {
+    i <- 0
+  } else {
+    stop("Invalid starting point. Choose 'mean' or '0'.")
+  }
+  
+  while (TRUE) {
+    U <- runif(1)  
+    cdf <- ppois(i, lambda)
+    if (U >= ppois(i, lambda)) {
+      i <- i + 1 
+      cdf <- ppois(i, lambda)
+    } else {
+      return(i) 
+    }
+  }
+}
+
+set.seed(SEED)
+results_from_0 <- replicate(100, generatePoisson(10, "0"))
+
+set.seed(SEED)
+results_from_mean <- replicate(100, generatePoisson(10, "mean"))
+
+mean_steps_from_0<- mean(results_from_0)
+mean_steps_from_mean <- mean(results_from_mean) - 10
+
+cat("Average number of steps starting from 0:", mean_steps_from_0, "\n")
+cat("Average number of steps starting from mean:", mean_steps_from_mean, "\n")
+```
+
+我們撰寫自定義函數generatePoisson，可以將服從0\~1的均勻分配亂數轉換成服從$\lambda$
+=
+10的普瓦松分配，並記錄轉換過程所需要的步數，從模擬100次的平均結果可以看出，從期望值出發所需要的步數，明顯少於從0出發，因此當$\lambda$很大時，建議從期望值開始轉換。
+
+Given the following matrix: $$
+A = \begin{pmatrix}
+1 & 0.5 & 0.25 & 0.125 \\
+0.5 & 1 & 0.5 & 0.25 \\
+0.25 & 0.5 & 1 & 0.5 \\
+0.125 & 0.25 & 0.5 & 1 \\
+\end{pmatrix}
+$$ (a) Write a program to compute the Cholesky decomposition of A. To
+double check your result, use the command "chol" in R to verify the
+result. (b) Use the commands "eigen", "qr", and "svd" on A and check if
+these commands work properly.
+
+(a).
+
+```{r echo=FALSE, warning=FALSE}
+A <- matrix(c(1, 0.5, 0.25, 0.125,
+            0.5, 1, 0.5, 0.25,  
+            0.25, 0.5, 1, 0.5,
+            0.125, 0.25, 0.5, 1), nrow = 4, byrow=TRUE)
+
+myChol = function(A) {
+  m = nrow(A)
+  for (i in 1:(m - 1)) {
+    A[i, i]=sqrt(A[i, i] - sum(A[0:(i - 1),i]^2))
+    for (j in (i + 1):m) {
+      A[i, j] = (A[i, j]-sum(A[0:(i-1),i]*A[0:(i - 1),j]))/A[i, i]
+    }
+  }
+  A[m, m] = sqrt(A[m, m] - sum(A[0:(m - 1), m]^2))
+  for (j in 1:m - 1) {
+    for (i in (j + 1):m) {
+      A[i,j] = 0
+    }
+  }
+  return(A)
+}
+
+chol(A)
+myChol(A)
+```
+
+我們撰寫自定義函數myChol，可以用來計算一個矩陣的Cholesky
+decomposition，透過R內建函數chol檢驗，我們帶入題目的矩陣A，可以獲得相同的結果。
+
+(b).
+
+```{r echo=FALSE, warning=FALSE}
+eigen_values <- eigen(A)$values
+eigen_vectors <- eigen(A)$vectors
+eigen_vectors %*% diag(eigen_values) %*% t(eigen_vectors) 
+
+Q <- qr.Q(qr(A))
+R <- qr.R(qr(A))
+Q %*% R
+
+U <- svd(A)$u
+V <- svd(A)$v
+D <- svd(A)$d
+
+U %*% diag(D) %*% t(V)
+```
+
+我們對A矩陣分別進行了函數eigen,
+qr和svd的計算，並將計算後的各值帶入公式，結果皆等於原本的矩陣A，這代表這三個函數的運作都是正常的。
