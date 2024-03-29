@@ -3,6 +3,7 @@
 
 library(magrittr)
 library(markdown)
+library(stargazer)
 
 
 ## 2. Box-Muller, Polar, Ratio-of-uniform ####
@@ -35,6 +36,7 @@ plot(box_sample[,"x"], box_sample[,"y"],
 ks.test(box_sample[,"x"], "pnorm")
 ks.test(box_sample[,"y"], "pnorm")
 
+
 BoxMuller1 <- function(n){
   res <- BoxMuller(n)
   return(res[,1])
@@ -51,7 +53,7 @@ KSTestRep <- function(sim, n = 10000, freq = 1000, dist = "pnorm", alpha = 0.05)
 
 KSTestRep(BoxMuller1, n = 10000, freq = 1000)
 
-### Polar ####
+### Polar #####
 
 Polar <- function(n){
   v1 <- runif(2*n, min = -1, max = 1)
@@ -198,7 +200,7 @@ ar2_md
 
 MyAR <- function(x, order){
   data <- x
-  data_colname <- paste0("x", c("",1:order))
+  data_colname <- c("x", paste0("ar", 1:order))
   data <- cbind(x = data, x_1 = lag(x, -1))
   order <- order - 1
   
@@ -213,8 +215,9 @@ MyAR <- function(x, order){
   
   return(md)
 }
-MyAR(lynx, 1)
 
+MyAR(lynx, 1)
+MyAR(lynx, 2)
 
 x <- lynx
 data <- x
@@ -225,3 +228,8 @@ data %>% class
 
 data <- array(x, dim = c(length(x), 1))
 cbind(x = data, lag(data[,ncol(data)]))
+
+my_ar1 <- MyAR(lynx, 1)
+my_ar2 <- MyAR(lynx, 2)
+
+stargazer(ar1_md, ar2_md, my_ar1, my_ar2, type = "text")
