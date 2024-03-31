@@ -25,6 +25,9 @@ library(stats)
 library(randtests)
 library(knitr)
 library(stargazer)
+library(magrittr)
+library(tidyr)
+library(kableExtra)
 ```
 
 ```{r echo=FALSE, message=FALSE, warning=FALSE}
@@ -50,8 +53,11 @@ b.  Using ARIMA random numbers to evaluate the type-1 and type-2 errors
 
 ```{r echo=FALSE, warning=FALSE}
 theta_values <- c(0, 0.05, 0.1, 0.15, 0.2)
+df_ac <- data.frame()
 
 set.seed(SEED)
+
+
 for (theta in theta_values) {
   correlation1_values <- c()
   correlation2_values <- c()
@@ -64,12 +70,12 @@ for (theta in theta_values) {
     correlation2_values <- c(correlation2_values, correlation2)
   }
   
-  avg_correlation1 <- mean(correlation1_values)
-  avg_correlation2 <- mean(correlation2_values)
+  ac1 <- mean(correlation1_values)
+  ac2 <- mean(correlation2_values)
   
-  print(paste("When theta is", theta, ", the average correlation between x_i and x_i+1 is :", round(avg_correlation1, 5)), quote = FALSE)
-  print(paste("When theta is", theta, ", the average correlation between x_i and x_i+2 is :", round(avg_correlation2, 5)), quote = FALSE)
+  df_ac <- rbind(df_ac, data.frame(theta, ac1, ac2))
 }
+kable(df_ac, caption = "Autocorrelation Matrix", digits = 4)
 ```
 
 我們使用不同的$\theta$值，從AR(2)進行了1000次的100個亂數模擬，從結果中我們可以看出，不管是$x_i$和$x_{i+1}$還是$x_i$和$x_{i+2}$的平均相關係數，當$\theta$值越大，平均相關係數也就越高。
@@ -105,7 +111,7 @@ gapTest <- function(data, a, b) {
   chisq.test(vec, p = result_vector)
 }
 
-numRej1 <- function(n, theta) {
+numRej1 <- function(theta, n) {
   t1err=0
   for (i in 1:n){
     set.seed(1+i)
@@ -115,15 +121,11 @@ numRej1 <- function(n, theta) {
     x = gapTest(data,47/100,97/100)
     if ((x$p.value)<=0.05) (t1err=t1err+1)
   }
-  results <- (t1err/n)*100
-  cat("When theta is", theta, ", number of rejection is",(t1err/n)*100,"% in Gap test\n")
+  results <- (t1err/n)
+  return(results)
 }
 
-set.seed(SEED)
-for (theta in theta_values) {
-  numRej1(1000,theta)
-}
-
+  
 permuteTest = function(data, k) {
   permute <- function(data, k) {
     y=rep(10,k)^c((k-1):0)
@@ -134,72 +136,53 @@ permuteTest = function(data, k) {
   }
   
   permute_count <- permute(data, k)
+  while(length(permute_count) < factorial(k)){
+    permute_count = c(permute_count, non = 0)
+  }
   prob <- rep(1/factorial(k), factorial(k))
   chisq.test(permute_count, p = prob)
 }
 
-numRej2 <- function(n,theta) {
+numRej2 <- function(theta, n) {
   t1err = 0
   for (i in 1:n) {
     set.seed(1 + i)
-    data <- arima.sim(model = list(order = c(2,0,0), ar = c(theta, theta)), n = 300, sd = 1)
+    data <- arima.sim(model = list(order = c(2,0,0), ar = c(theta, theta)), n = 100, sd = 1)
     if (permuteTest(data, 3)$p.value <= 0.05) {
       t1err = t1err + 1
     }
   }
-  results <- (t1err/n)*100
-  cat("When theta is", theta, ", number of rejection is",(t1err/n)*100,"% in Permutation test\n")
+  results <- (t1err/n)
+  return(results)
 }
 
-set.seed(SEED)
-for (theta in theta_values) {
-  numRej2(1000 , theta)
-}
-
-
-numRej3 <- function(n,theta) {
+numRej3 <- function(theta, n) {
   t1err=0
   for (i in 1:n) {
+    set.seed(1 + i)
     data<-arima.sim(model = list(order = c(2,0,0), ar = c(theta, theta)), n = 100, sd = 1)
     x=runs.test(data)
     if ((x$p.value) <= 0.05) (t1err=t1err+1)
   }
-  cat("When theta is", theta, ", number of rejection is",(t1err/n)*100,"% in Run test\n")
+  results <- (t1err/n)
+  return(results)
 }
 
-set.seed(SEED)
-for (theta in theta_values) {
-  numRej3(1000, theta)
-}
+r <- rbind(gap = sapply(theta_values, numRej1, 1000),
+      permute = sapply(theta_values, numRej2, 1000),
+      runs = sapply(theta_values, numRej3, 1000))
+r[, -1] <- 1 - r[, -1]
+colnames(r) <- theta_values
+
+kable(r, caption = "Type I Error and Type II Error of Test") %>%
+  # kable_styling(latex_options = "striped", position = "center") %>%
+  add_header_above(c(" " = 1, "Type I Error" = 1, "Type II Error" = 4), 
+                   escape = FALSE)
 ```
 
 Type I error 算法 : $\theta = 0$ 資料為獨立,故於此情況下計算拒絕個數。
 Type II error 算法 : $\theta > 0$
 資料為不獨立,於此情況下計算不拒絕個數。
-
-Gap test :
-
--   $\theta$ = 0, Type I error = 0.342
--   $\theta$ = 0.05, Type II error = 0.657
--   $\theta$ = 0.1, Type II error = 0.629
--   $\theta$ = 0.15, Type II error = 0.608
--   $\theta$ = 0.2, Type II error = 0.552
-
-Permutation test :
-
--   $\theta$ = 0, Type I error = 0.054
--   $\theta$ = 0.05, Type II error = 0.958
--   $\theta$ = 0.1, Type II error = 0.951
--   $\theta$ = 0.15, Type II error = 0.962
--   $\theta$ = 0.2, Type II error = 0.955
-
-Run test :
-
--   $\theta$ = 0, Type I error = 0.066
--   $\theta$ = 0.05, Type II error = 0.925
--   $\theta$ = 0.1, Type II error = 0.880
--   $\theta$ = 0.15, Type II error = 0.775
--   $\theta$ = 0.2, Type II error = 0.624
 
 從結果比較中我們可以看出，Permutation test對於
 $\theta$值的變化敏感程度較低，相反地，Gap test與Run
@@ -216,7 +199,7 @@ b.  In the class we mentioned it is found by several researchers that
 
     a (multiplier) = 131\
     c (increment) = 0\
-    m (modulus) = 2\^35
+    m (modulus)= 2\^35
 
 would have $X \in (–3.3,3.6)$, if plugging congruential generators into
 the Box-Muller method. Verify if you would have similar results.
@@ -257,7 +240,7 @@ hist(box_sample[,"y"], main = "Box-Muller (10,000 runs)", xlab = "y")
 
 另外由於亂數是二維的，因此我們可以在平面上繪製散佈圖，可以觀察到兩個亂數並沒有明顯相關性。
 
-```{r echo=FALSE, out.height = '40%', fig.align = "center"}
+```{r echo=FALSE, out.height = '30%', fig.align = "center"}
 par(mfrow = c(1,1))
 plot(box_sample[,"x"], box_sample[,"y"],
      main = "Scatter Plot of Box-Muller", xlab = "x", ylab = "y")
@@ -297,13 +280,13 @@ hist(polar_sample[,"y"], main = "Polar Method (10,000 runs)", xlab = "y")
 
 另外由於亂數是二維的，因此我們可以在平面上繪製散佈圖，可以觀察到兩個亂數並沒有明顯相關性。
 
-```{r echo=FALSE, out.height = '40%', fig.align = "center"}
+```{r echo=FALSE, out.height = '30%', fig.align = "center"}
 par(mfrow = c(1,1))
 plot(polar_sample[,"x"], polar_sample[,"y"],
      main = "Scatter Plot of Polar Method", xlab = "x", ylab = "y")
 ```
 
-```{r include=FALSE, out.height = '60%', fig.align = "center"}
+```{r include=FALSE}
 RatioUnif <- function(n){
   u1 <- runif(10*n)
   u2 <- runif(10*n)
@@ -317,7 +300,7 @@ RatioUnif <- function(n){
 
 Ratio-of-uniforms一次可以產生一個亂數，下方是使用Ratio-of-uniforms產生10,000個亂數，並繪製直方圖，可以觀察到亂數的分布很接近常態分佈。
 
-```{r echo=FALSE, out.height = '40%', fig.align = "center"}
+```{r echo=FALSE, out.height = '30%', fig.align = "center"}
 set.seed(SEED)
 ratiounif_sample <- RatioUnif(10000)
 
@@ -472,7 +455,7 @@ tvVariate <- function(n){
 
 t-Variate一次可以產生一個亂數，下方是使用t-Variate產生10,000個亂數，並繪製直方圖，可以觀察到亂數的分布不太接近常態分佈。
 
-```{r echo=FALSE, out.height = '40%', fig.align = "center"}
+```{r echo=FALSE, out.height = '30%', fig.align = "center"}
 set.seed(SEED)
 tvariate_sample <- tvVariate(10000)
 hist(tvariate_sample, main = "t-Variate Method (10,000 runs)")
@@ -491,7 +474,6 @@ kable(reject_tb4, caption = "Reject of t-Variate")
 ```{r eval=FALSE, include=FALSE}
 stargazer(reject_tb4, type = "text")
 ```
-
 
 ## Question 5
 
@@ -537,9 +519,12 @@ myChol = function(A) {
   return(A)
 }
 
-chol(A)
-myChol(A)
+chol(A) %>% kable(caption = "matrix from cole{base}", digits = 4)
 ```
+```{r echo=FALSE}
+myChol(A) %>% kable(caption = "matrix from myChol", digits = 4)
+```
+
 
 我們撰寫自定義函數myChol，可以用來計算一個矩陣的Cholesky
 decomposition，透過R內建函數chol檢驗，我們帶入題目的矩陣A，可以獲得相同的結果。
@@ -549,18 +534,25 @@ decomposition，透過R內建函數chol檢驗，我們帶入題目的矩陣A，�
 ```{r echo=FALSE, warning=FALSE}
 eigen_values <- eigen(A)$values
 eigen_vectors <- eigen(A)$vectors
-eigen_vectors %*% diag(eigen_values) %*% t(eigen_vectors) 
-
+eigen_vectors %*% diag(eigen_values) %*% t(eigen_vectors) %>% 
+  kable(caption = "Caculate by eigen")
+```
+```{r echo=FALSE}
 Q <- qr.Q(qr(A))
 R <- qr.R(qr(A))
-Q %*% R
+Q %*% R %>% 
+  kable(caption = "Caculate by qr")
+```
 
+```{r echo=FALSE}
 U <- svd(A)$u
 V <- svd(A)$v
 D <- svd(A)$d
 
-U %*% diag(D) %*% t(V)
+U %*% diag(D) %*% t(V) %>% 
+  kable(caption = "Caculate by svd")
 ```
+
 
 我們對A矩陣分別進行了函數eigen,
 qr和svd的計算，並將計算後的各值帶入公式，結果皆等於原本的矩陣A，這代表這三個函數的運作都是正常的。
@@ -576,11 +568,11 @@ them to those from your program.
 MyAR <- function(x, order){
   data <- x
   data_colname <- c("x", paste0("ar", 1:order))
-  data <- cbind(x = data, x_1 = lag(x, -1))
+  data <- cbind(x = data, x_1 = stats::lag(x, -1))
   order <- order - 1
   
   while (order > 0) {
-    data <- cbind(data, lag(data[,ncol(data)], -1))
+    data <- cbind(data, stats::lag(data[,ncol(data)], -1))
     order <- order - 1
   }
   colnames(data) <- data_colname
@@ -613,7 +605,7 @@ my_ar2 <- MyAR(lynx, 2)
 stargazer(ar1_md, ar2_md, my_ar1, my_ar2,
           title = "Result of My AR Model and R's ARIMA Model",
           type = "latex",
-          column.sep.width = "-5pt",
+          column.sep.width = "5pt",
           no.space = TRUE,
           column.labels = c("AR(1)", "AR(2)", "AR(1)", "AR(2)"),
           model.numbers = FALSE,
@@ -621,6 +613,8 @@ stargazer(ar1_md, ar2_md, my_ar1, my_ar2,
 ```
 
 ## Appendix
+
 ### R code
+
 ```{r ref.label=knitr::all_labels(), echo=TRUE, eval=FALSE}
 ```
