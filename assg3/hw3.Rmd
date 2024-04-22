@@ -1,0 +1,279 @@
+---
+title: 'Statistical Computing and Simulation: Assignment 3'
+author: |
+  | Deparment of Statistics,\ NCCU  
+  | 葉佐晨 \   \   高崇哲
+  | \{112354016,112354020\}@nccu.edu.tw
+date: "`r Sys.Date()`"
+output: 
+  pdf_document:
+    extra_dependencies:
+      ctex: UTF8
+  html_document:
+    df_print: paged
+editor_options:
+  markdown:
+    wrap: 72
+---
+
+# Statistical Computing and Simulation
+
+## Assignment 3, Due April 26/2024
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+library(ggplot2)
+library(tidyverse)
+library(gridExtra)
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+SEED <- 123
+```
+
+## Question 2
+
+2.  Singular Value Decomposition (SVD) and Principal Component Analysis
+    (PCA) both can be used to reduce the data dimensionality. Use the
+    mortality data, 17 5-age groups for ages 0\~4, 5\~9, ..., 80\~84, in
+    Taiwan area to demonstrate how these two methods work. The data of
+    the years 1970-2000 are used as the "training" (insample) data and
+    the years 2001-2005 are used as the "testing" (out-sample) data. You
+    only need to perform one set of data, according to your gender.
+
+```{r echo=FALSE}
+###### 2. ##########
+
+## data preprocess. ######
+data <- round(read.csv('1970~2005台灣男性死亡率.csv'), 2)
+row.names(data) <- data[, 1]
+data <- data[, -1]
+
+train <- data[1:31, ]
+test <- data[32:36, ]
+
+train_matrix <- as.matrix(log(train))
+test_matrix <- as.matrix(log(test))
+
+alphax <- NULL
+for (i in 1:17) {
+  alphax[i] <- mean(train_matrix[,i])
+}
+
+for (i in 1:17) {
+  train_matrix[, i] <- train_matrix[, i] - alphax[i]
+}
+
+## predictions and calculate MAPE. ######
+PreMape <- function(time_component, age_component, singular_value) {
+  train_x <- 1970:2000
+  lm_model <- lm(time_component*singular_value ~ train_x)
+  beta <- as.matrix(unlist(lm_model$coefficients))
+  
+  pre_y <- beta[1] + beta[2]*matrix(2001:2005, ncol = 1)
+  lnmxt <- pre_y %*% matrix(age_component, ncol = 17) +
+    matrix(rep(alphax, time = 5), ncol = 17, byrow = TRUE)
+  
+  pre_mxt <- exp(lnmxt)
+  test_real <- exp(test_matrix)
+  mape <- mean(as.vector(abs((pre_mxt - test_real) / test_real)))
+  print(mape)
+}
+
+## SVD. ######
+train_svd <- svd(train_matrix)
+
+cat("SVD後的奇異值:\n")
+train_svd$d
+
+singular_value_1 <- train_svd$d[1]
+
+timecompo_svd <- train_svd$u[, 1]
+agecompo_svd <- train_svd$v[, 1]
+
+cat("\n")
+cat("透過SVD處理的Lee carter模型，其MAPE值為:\n")
+PreMape(timecompo_svd, agecompo_svd, singular_value_1)
+
+## PCA. ######
+train_pca <- prcomp(train_matrix)
+
+cat("\n")
+cat("PCA後的信息:\n")
+summary(train_pca)
+
+timecompo_pca <- train_pca$x[,1]
+agecompo_pca <- train_pca$rotation[,1]
+
+cat("\n")
+cat("透過PCA處理的Lee carter模型，其MAPE值為:\n")
+PreMape(timecompo_pca, agecompo_pca, train_pca$sdev[1])
+```
+
+在進行SVD跟PCA之前，我們會先對資料取log,並減掉該年齡層的平均死亡率。
+
+SVD:
+進行SVD分解後，得到矩陣UPV'，U為時間成分，V為年齡成分，P為奇異值，選取第一個最大的奇異值4.145，與第一行的的時間成分去擬合迴歸模型，並預測2001~2005年，最後帶入平均死亡率和年齡成分取指數，就可以回推我們模型預測2001~2005年的死亡率，與真實值計算後，透過SVD處理的Lee
+carter模型，其MAPE值為0.133。
+
+PCA:
+透過prcomp函數進行PCA分解後，得到時間成分與年齡成分，並選取第一個變異比例最大的主成分，重複與SVD一樣的過程，回推得到我們模型預測2001\~2005年的死亡率，透過PCA處理的Lee
+carter模型，其MAPE值為0.193。
+
+已MAPE當作衡量指標，在Lee carter模型上SVD的表現較PCA要好。
+
+## Question 4
+
+4.  Using simulation to construct critical values of the
+    Mann-Whitney-Wilcoxon test in the case that 2 $\le$ $n_1 ,n_2$ $\le$
+    10, where $n_1$ and $n_2$ are the number of observations in two
+    populations.(Note: The number of replications shall be at least
+    10,000.)
+
+```{r echo=FALSE}
+###### 4. ##########
+MWW <- function(x, y) {
+  n_1 <- length(x)
+  n_2 <- length(y)
+  r_1 <- rank(c(x, y))[1:n_1]
+  r_2 <- rank(c(x, y))[-(1:n_1)]
+  w_1 <- sum(r_1)
+  w_2 <- sum(r_2)
+  u_1 <- n_1*n_2 + n_1*(n_1 + 1) / 2 - w_1
+  u_2 <- n_1*n_2 + n_2*(n_2 + 1) / 2 - w_2
+  u <- min(u_1, u_2)
+  e_u <- n_1*n_2 / 2
+  var_u <- n_1*n_2*(n_1 + n_2 + 1) / 12
+  z = (u - e_u) / sqrt(var_u)
+  return(z)
+}
+
+CriticalPlot <- function (n_1, n_2) {
+  critical <- NULL
+  for (i in 1:10000) {
+    set.seed(SEED)
+    critical <- c(critical, MWW(rexp(n_1, rate = 1), rexp(n_2, rate = 1)))
+    SEED <- SEED + 1
+    }
+  SEED <- 123
+  plot <- critical %>% data.frame(critical) %>%
+    ggplot(aes(x = critical))+
+    geom_histogram(binwidth = 0.3)+
+    theme(axis.title = element_text(size = 10))+
+    labs(title = paste("n1 =", n_1, ", n2 =", n_2, "in 10,000 times"), x = 'Critical value', y = 'Frequency')
+  return(plot)
+}
+
+plot_1 <- CriticalPlot(2, 2)
+plot_2 <- CriticalPlot(5, 5)
+plot_3 <- CriticalPlot(8, 8)
+plot_4 <- CriticalPlot(10, 10)
+
+grid.arrange(plot_1, plot_2, plot_3, plot_4, ncol = 2)
+```
+
+我們分別在期望值為1的指數分配，個別抽出了2, 5,
+8和10個觀察值，並進行10,000次的模擬，進行 Mann-Whitney-Wilcoxon
+檢定，可以從結果的四張圖看出，當n1和n2越大，臨界值會越集中在-1\~0之間。
+
+## Question 6
+
+6.  To compare teaching, twenty schoolchildren were divided into two
+    groups: ten taught by conventional methods and ten taught by an
+    entirely new approach. The following are the test results:
+
+| Category     | 1   | 2   | 3   | 4   | 5   | 6   | 7   | 8   | 9   | 10  |
+|--------------|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|
+| Conventional | 65  | 79  | 90  | 75  | 61  | 85  | 98  | 80  | 97  | 75  |
+| New          | 90  | 98  | 73  | 79  | 84  | 81  | 98  | 90  | 83  | 88  |
+
+Are the two teaching methods equivalent in result? You need to use
+permutation test, (parametric and non-parametric) bootstrap, and
+parametric test, and then compare their differences in testing.
+
+```{r echo=FALSE}
+###### 6. ##########
+
+conventional <- c(65, 79, 90, 75, 61, 85, 98, 80, 97, 75)
+new <- c(90, 98, 73, 79, 84, 81, 98, 90, 83, 88)
+
+## permutation test. ######
+PermuteTest <- function(conventional, new, n_permutations) {
+  permuted_diffs <- numeric(n_permutations)
+  all_data <- c(conventional, new)
+  observed_diff <- mean(new) - mean(conventional)
+  
+  for (i in 1:n_permutations) {
+    set.seed(SEED)
+    permuted_labels <- sample(c(rep("conventional", 10), rep("new", 10)))
+    permuted_diffs[i] <- mean(all_data[permuted_labels == "new"]) - mean(all_data[permuted_labels == "conventional"])
+    SEED <- SEED + 1
+  }
+  SEED <- 123
+  p_value <- sum(permuted_diffs >= observed_diff) / n_permutations
+  cat("Observed mean difference:", observed_diff, "\n")
+  cat("p-value:", p_value, "\n")
+}
+
+PermuteTest(conventional, new, 10000)
+```
+
+進行Permutation
+test時，我們先計算出new跟conventional的平均值差異，然後在將這兩組資料混和後重新隨機分類為兩類，重複模擬10,000次，並計算出隨機分為兩類，其平均值差異大於new跟conventional的平均值差異，作為p值，結果顯示，當$\alpha$
+=
+0.05，不拒絕虛無假設，也就是我們沒有足夠證據顯示，new這組資料的平均值大於conventional。
+
+```{r echo=FALSE}
+## non-parametric bootstrap test. ######
+t_1 <- NULL
+for (i in 1:10000) {
+  set.seed(SEED)
+  sample_con <- sample(conventional, size = 10, replace = T)
+  sample_new <- sample(new, size = 10, replace = T)
+  m_1 <- mean(sample_new) - mean(sample_con)
+  t_1 <- c(t_1, m_1)
+  SEED <- SEED + 1
+}
+
+SEED <- 123
+hist(t_1, main = "mean difference in 10,000 times", xlab = "Mean difference")
+
+cat("new跟conventiol平均值差異的95%信賴區間為:\n")
+c((mean(new) - mean(conventional)) - qt(0.975, 18)*sd(t_1),
+  (mean(new) - mean(conventional)) + qt(0.975, 18)*sd(t_1))
+```
+
+進行non-parametric bootstrap
+test時，我們會各自在new跟conventional這兩組資料，隨機抽出並放回各取出10個樣本，並計算這兩組樣本的平均值差異，重複模擬10,000次，從圖中可以看到平均值差異大多落在0\~10之間，透過模擬結果，new跟conventional的平均值差異95%信賴區間包含0，也就是說，我們沒有足夠證據顯示，new這組資料的平均值大於conventional。
+
+```{r echo=FALSE}
+## parametric bootstrap test. ######
+t_2 <- NULL
+for (i in 1:10000) {
+  set.seed(SEED)
+  rnorm_con <- rnorm(10, mean = mean(conventional), sd = sd(conventional))
+  rnorm_new <- rnorm(10, mean = mean(new), sd = sd(new))
+  m_2 <- mean(rnorm_new) - mean(rnorm_con)
+  t_2 <- c(t_2, m_2)
+  SEED <- SEED + 1
+}
+
+SEED <- 123
+hist(t_2, main = "mean difference in 10,000 times", xlab = "Mean difference")
+
+cat("new跟conventiol平均值差異的95%信賴區間為:\n")
+c((mean(rnorm_new) - mean(rnorm_con)) - qt(0.975, 18)*sd(t_2),
+  (mean(rnorm_new) - mean(rnorm_con)) + qt(0.975, 18)*sd(t_2))
+```
+
+進行parametric bootstrap
+test時，我們會各自在new跟conventional這兩組資料，計算期望值跟標準差，作為兩個常態母體的參數，並從這兩個常態分配隨機抽出各10個樣本，並計算這兩組樣本的平均值差異，重複模擬10,000次，從圖中可以看到平均值差異大多落在-2\~12之間，透過模擬結果，new跟conventional的平均值差異95%信賴區間不包含0，也就是說，我們有足夠證據顯示，new這組資料的平均值大於conventional。
+
+```{r echo=FALSE}
+t.test(new, conventional, paired = T, alternative = "two.sided")
+```
+
+從parametric test的結果我們可以看到，p值為0.2371，也就是說，當$\alpha$ =
+0.05，不拒絕虛無假設，我們沒有足夠證據顯示，new這組資料的平均值大於conventional。
+
+從四個檢定的結果比較我們可以發現，只有parametric bootstrap
+test的結果顯示，new這組資料的平均值大於conventional是顯著的，但前提條件是這些資料需要滿足假設，從其他三個檢定結果推斷，數據可能不太符合假設。
