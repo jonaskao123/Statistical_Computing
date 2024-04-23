@@ -24,10 +24,72 @@ editor_options:
 library(ggplot2)
 library(tidyverse)
 library(gridExtra)
+library(magrittr)
+library(CarletonStats)
+library(jmuOutlier)
+library(BHH2)
+library(gtools)
+library(bootstrap)
+library(dplyr)
+library(reshape2)
+library(knitr)
 ```
 
 ```{r echo=FALSE, message=FALSE, warning=FALSE}
 SEED <- 123
+```
+
+## Question 1
+
+Given the following data, use one of the orthogonalization methods
+introduced in class to perform regression analysis, including the
+parameter estimates and their standard errors. (You may use the
+functions of matrix computation built in S-Plus and R, but not the
+function `lm` or `glm`.) Compare your results with those from
+statistical software, such as SAS, SPSS, and Mintab.
+
+```{r stack data, include=FALSE}
+stack <- read.csv("stack.csv", row.names = "Obs")
+X <- subset(stack, select = -y) %>% 
+  as.matrix()
+y <- as.matrix(subset(stack, select = y))
+```
+
+```{r Mylm, include=FALSE}
+Mylm <- function(X, y){
+  coeflab <- colnames(X)
+  X <- as.matrix(X)
+  y <- as.matrix(y)
+  
+  qrstr <- qr(X)
+  Q <- qr.Q(qrstr)
+  R <- qr.R(qrstr)
+  
+  b <- solve(R) %*% t(Q) %*% y
+  mse <- sqrt(sum((y - X %*% b)^2) / (nrow(X) - ncol(X)))
+  sd_b <- sqrt(diag(mse * solve(t(X) %*% X))) * 2
+  
+  t <- b / sd_b
+  pval <- 1 - pt(abs(t), df = nrow(X))
+  res <- cbind(b, sd_b, t, pval)
+  colnames(res) <- c("estimate", "std.error", "t-value", "p-value")
+  rownames(res) <- coeflab
+  
+  return(res)
+}
+```
+
+```{r lm, echo=FALSE}
+sumy <- lm(y ~ 0 + x1 + x2 + x3, data = stack) %>% 
+  summary()
+
+sumy[["coefficients"]] %>% 
+  kable(digits = 4, caption = "Coefficients of lm{stats}")
+```
+
+```{r Mylm coef, echo=FALSE}
+Mylm(X, y) %>% 
+  kable(digits = 4, caption = "Coefficients of Mylm")
 ```
 
 ## Question 2
@@ -121,6 +183,82 @@ carter模型，其MAPE值為0.193。
 
 已MAPE當作衡量指標，在Lee carter模型上SVD的表現較PCA要好。
 
+## Question 3
+
+(a) Write a small program to perform the "Permutation test" and test
+    your result on the correlation of DDT vs. eggshell thickness in
+    class, and the following data: Check your answer with other
+    correlation tests, such as regular Pearson and Spearman correlation
+    coefficients.
+
+```{r eggshell, include=FALSE}
+ddt <- c(585, 1002, 472, 493, 408, 690, 291)
+thick <- c(0.1, 0.2, 0.5, 1.0, 1.5, 2.0, 3.0)
+```
+
+```{r MyPermTest, include=FALSE}
+MyPermTest <- function(x, y){
+  s <- sum(x * y)
+  per_y <- gtools::permutations(length(y), length(y), y)
+  per_s <- apply(per_y, 1, function(y) sum(x * y))
+  
+  n <- length(per_s)
+  n_g <- sum(per_s > s)
+  n_l <- sum(per_s < s)
+  
+  p <- min(n_g, n_l) / n
+  return(c(n = n, "p-value" = p))
+}
+```
+
+```{r MyPermTest pvalue, echo=FALSE}
+MyPermTest(ddt, thick) %>% 
+  t %>% 
+  kable(digits = 4, caption = "Correlation Test of MyPermTest")
+```
+
+```{r cor.test, echo=FALSE}
+cor.test(ddt, thick)
+```
+
+(b) Simulate a set of two correlated normal distribution variables, with
+    zero mean and variance 1. Let the correlation coefficient be 0.2 and
+    0.8. (Use Cholesky!) Then convert the data back to Uniform(0,1) and
+    record only the first decimal number. (亦
+    即只取小數第一位，0至9的整數) Suppose the sample size is 10. Apply
+    the permutation test, Pearson and Spearman correlation coefficients,
+    and records the p-values of these three methods. (10,000 simulation
+    runs)
+
+```{r CorTestRep, include=FALSE}
+CorTestRep <- function(n, size, r, alpha){
+  # cat(paste0("simulation time: ", n, ", sample size: ", size, ", corelation = ", r, 
+  #            "\nthe count table of test reject no correlation is:\n"))
+  sig <- matrix(c(1, r,
+                  r, 1), ncol = 2)
+  a <- chol(sig)
+  
+  rej <- replicate(n = n,{
+    x <- matrix(rnorm(size * 2), ncol = 2) %*% a
+    u <- floor((pnorm(x)*10))
+    p <- cor.test(u[, 1], u[, 2])[["p.value"]] < alpha
+    sp <- cor.test(u[, 1], u[, 2], method = "spearman")[["p.value"]] < alpha
+    pm <- perm.cor.test(u[, 1], u[, 2], num.sim = 1000)[["p.value"]] < alpha
+    return(c(pearson = p, spearson = sp, permutation = pm))
+  })
+  n_rej <- apply(rej, 1, sum)
+  return(n_rej)
+}
+```
+
+```{r rejtable, echo=FALSE, warning=FALSE}
+set.seed(SEED)
+rbind(
+  `r=0.2` = CorTestRep(n = 100, size = 10, r = 0.2, alpha = 0.05),
+  `r=0.8` = CorTestRep(n = 100, size = 10, r = 0.8, alpha = 0.05)) %>% 
+  kable(caption = "Reject Frequency Table of Correlation Test")
+```
+
 ## Question 4
 
 4.  Using simulation to construct critical values of the
@@ -174,6 +312,65 @@ grid.arrange(plot_1, plot_2, plot_3, plot_4, ncol = 2)
 我們分別在期望值為1的指數分配，個別抽出了2, 5,
 8和10個觀察值，並進行10,000次的模擬，進行 Mann-Whitney-Wilcoxon
 檢定，可以從結果的四張圖看出，當n1和n2越大，臨界值會越集中在-1\~0之間。
+
+## Question 5
+
+Similar to what Efron did in the Law school data example, compute the
+bootstrap simulation for 50, 100, ..., 10,000 replications. But, instead
+of using the original 15 observations, we want to know if the number of
+observations plays an important role. Randomly select 10, 15, 20, and 25
+observations and then see if the bootstrap variance converges as the
+number of replications increases. (Note: You also need to compare your
+results with that of population.)
+
+```{r law82, echo=FALSE}
+data("law82")
+pop.cor <- cor(law82$LSAT, law82$GPA)
+reps <- c(50, 100, 1000, 10000)
+obsers <- c(10, 15, 20, 25)
+print(paste("population correlation is", round(pop.cor, 4)))
+```
+
+```{r BootStrapCor, include=FALSE}
+BootStrapCor <- function(n, size, val = "sd"){
+  obs <- law82[sample(nrow(law82), size = size, replace = FALSE), c("LSAT", "GPA")]
+  cor_b <- replicate(n = n, {
+    x <- obs[sample(rownames(obs), size = size, replace = TRUE), ]
+    cor(x$LSAT, x$GPA)
+  })
+  cor_sd <- sqrt(var(cor_b))
+  corr <- mean(cor_b)
+  # return(c(correlation = corr, cor_sd = cor_sd))
+  if (val == "corr"){
+    return(corr)
+  }else{
+    return(cor_sd)
+  }
+}
+```
+
+```{r bostp corstd, echo=FALSE}
+set.seed(SEED)
+res <- outer(reps, obsers,
+             Vectorize(function(x, y) BootStrapCor(n = x, size = y)))
+rownames(res_cor) <- paste0("rep=", reps)
+colnames(res_cor) <- paste0("obs=", obsers)
+res_cor %>% 
+  kable(digits = 4, 
+        caption = "Std Deviation Matrix Given Replicate Time and Sample Observation")
+```
+
+```{r bostp cor, echo=FALSE}
+set.seed(SEED)
+res_cor <- outer(reps, obsers,
+                 Vectorize(function(x, y) BootStrapCor(n = x, size = y, val = "corr")))
+rownames(res_cor) <- paste0("rep=", reps)
+colnames(res_cor) <- paste0("obs=", obsers)
+
+res_cor %>% 
+  kable(digits = 4, 
+        caption = "Correlation Matrix Given Replicate Time and Sample Observation")
+```
 
 ## Question 6
 
@@ -277,3 +474,10 @@ t.test(new, conventional, paired = T, alternative = "two.sided")
 
 從四個檢定的結果比較我們可以發現，只有parametric bootstrap
 test的結果顯示，new這組資料的平均值大於conventional是顯著的，但前提條件是這些資料需要滿足假設，從其他三個檢定結果推斷，數據可能不太符合假設。
+
+## Appendix
+
+### R code
+
+```{r ref.label=c("stack data", "Mylm", "lm", "Mylm coef"), echo=TRUE, eval=FALSE}
+```
