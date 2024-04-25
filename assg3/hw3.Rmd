@@ -6,7 +6,7 @@ author: |
   | \{112354016,112354020\}@nccu.edu.tw
 date: "`r Sys.Date()`"
 output: 
-  pdf_document:
+  pdf_document: 
     extra_dependencies:
       ctex: UTF8
   html_document:
@@ -46,16 +46,18 @@ introduced in class to perform regression analysis, including the
 parameter estimates and their standard errors. (You may use the
 functions of matrix computation built in S-Plus and R, but not the
 function `lm` or `glm`.) Compare your results with those from
-statistical software, such as SAS, SPSS, and Mintab.
+statistical software, such as SAS, SPSS, and Mintab.  
 
-```{r stack data, include=FALSE}
+為了估計迴歸方程式的係數以及標準差，我們採取的是QR Decomposition，需要先將X進行分解，再經過矩陣運算求解。使用y資料和預測y的預測值的殘差計算MSE，再和X的變異數矩陣進行計算，最後得到係數的標準差。計算係數和標準差後就可以進行t檢定，計算p-value以及判斷係數是否顯著。
+
+```{r 1.1, include=FALSE}
 stack <- read.csv("stack.csv", row.names = "Obs")
 X <- subset(stack, select = -y) %>% 
   as.matrix()
 y <- as.matrix(subset(stack, select = y))
 ```
 
-```{r Mylm, include=FALSE}
+```{r 1.2, include=FALSE}
 Mylm <- function(X, y){
   coeflab <- colnames(X)
   X <- as.matrix(X)
@@ -79,7 +81,9 @@ Mylm <- function(X, y){
 }
 ```
 
-```{r lm, echo=FALSE}
+下表是使用R語言內建的lm函數估計迴歸係數，我們將以這些估計值為基準，衡量QR方法估計的迴歸係數。
+
+```{r 1.3, echo=FALSE}
 sumy <- lm(y ~ 0 + x1 + x2 + x3, data = stack) %>% 
   summary()
 
@@ -87,7 +91,8 @@ sumy[["coefficients"]] %>%
   kable(digits = 4, caption = "Coefficients of lm{stats}")
 ```
 
-```{r Mylm coef, echo=FALSE}
+下列數值是使用自定義的QR分解估計結果，我們可以看到估計的的數值相當接近內建函數`lm`的結果。
+```{r 1.4, echo=FALSE}
 Mylm(X, y) %>% 
   kable(digits = 4, caption = "Coefficients of Mylm")
 ```
@@ -102,11 +107,11 @@ Mylm(X, y) %>%
     the years 2001-2005 are used as the "testing" (out-sample) data. You
     only need to perform one set of data, according to your gender.
 
-```{r echo=FALSE}
+```{r 2.1, echo=FALSE}
 ###### 2. ##########
 
 ## data preprocess. ######
-data <- round(read.csv('1970~2005台灣男性死亡率.csv'), 2)
+data <- round(read.csv('mortality_male_1970_2005.csv'), 2)
 row.names(data) <- data[, 1]
 data <- data[, -1]
 
@@ -144,7 +149,7 @@ PreMape <- function(time_component, age_component, singular_value) {
 ## SVD. ######
 train_svd <- svd(train_matrix)
 
-cat("SVD後的奇異值:\n")
+cat("singular value of SVD:\n")
 train_svd$d
 
 singular_value_1 <- train_svd$d[1]
@@ -153,28 +158,28 @@ timecompo_svd <- train_svd$u[, 1]
 agecompo_svd <- train_svd$v[, 1]
 
 cat("\n")
-cat("透過SVD處理的Lee carter模型，其MAPE值為:\n")
+cat("Lee carter model with SVD, MAPE:\n")
 PreMape(timecompo_svd, agecompo_svd, singular_value_1)
 
 ## PCA. ######
 train_pca <- prcomp(train_matrix)
 
 cat("\n")
-cat("PCA後的信息:\n")
+cat("Information of PCA:\n")
 summary(train_pca)
 
 timecompo_pca <- train_pca$x[,1]
 agecompo_pca <- train_pca$rotation[,1]
 
 cat("\n")
-cat("透過PCA處理的Lee carter模型，其MAPE值為:\n")
+cat("Lee carter model with PCA, MAPE:\n")
 PreMape(timecompo_pca, agecompo_pca, train_pca$sdev[1])
 ```
 
 在進行SVD跟PCA之前，我們會先對資料取log,並減掉該年齡層的平均死亡率。
 
 SVD:
-進行SVD分解後，得到矩陣UPV'，U為時間成分，V為年齡成分，P為奇異值，選取第一個最大的奇異值4.145，與第一行的的時間成分去擬合迴歸模型，並預測2001~2005年，最後帶入平均死亡率和年齡成分取指數，就可以回推我們模型預測2001~2005年的死亡率，與真實值計算後，透過SVD處理的Lee
+進行SVD分解後，得到矩陣UPV'，U為時間成分，V為年齡成分，P為奇異值，選取第一個最大的奇異值4.145，與第一行的的時間成分去擬合迴歸模型，並預測2001\~2005年，最後帶入平均死亡率和年齡成分取指數，就可以回推我們模型預測2001\~2005年的死亡率，與真實值計算後，透過SVD處理的Lee
 carter模型，其MAPE值為0.133。
 
 PCA:
@@ -191,12 +196,12 @@ carter模型，其MAPE值為0.193。
     correlation tests, such as regular Pearson and Spearman correlation
     coefficients.
 
-```{r eggshell, include=FALSE}
+```{r 3.1, include=FALSE}
 ddt <- c(585, 1002, 472, 493, 408, 690, 291)
 thick <- c(0.1, 0.2, 0.5, 1.0, 1.5, 2.0, 3.0)
 ```
 
-```{r MyPermTest, include=FALSE}
+```{r 3.2, include=FALSE}
 MyPermTest <- function(x, y){
   s <- sum(x * y)
   per_y <- gtools::permutations(length(y), length(y), y)
@@ -211,13 +216,16 @@ MyPermTest <- function(x, y){
 }
 ```
 
-```{r MyPermTest pvalue, echo=FALSE}
+下表是使用自定義的Permutation test進行檢定，表中呈現了總共取了多少個排列組合，p-value相當與有多少比例的組合高於樣本。
+
+```{r 3.3, echo=FALSE}
 MyPermTest(ddt, thick) %>% 
   t %>% 
   kable(digits = 4, caption = "Correlation Test of MyPermTest")
 ```
 
-```{r cor.test, echo=FALSE}
+下列是使用R內建的Pearson's Correlation Test，可以看到p-value相較於Permutation Test較大。因此在小樣本的情況下，Permutation test可能會取得更好的結果。
+```{r 3.4, echo=FALSE}
 cor.test(ddt, thick)
 ```
 
@@ -230,7 +238,7 @@ cor.test(ddt, thick)
     and records the p-values of these three methods. (10,000 simulation
     runs)
 
-```{r CorTestRep, include=FALSE}
+```{r 3.5, include=FALSE}
 CorTestRep <- function(n, size, r, alpha){
   # cat(paste0("simulation time: ", n, ", sample size: ", size, ", corelation = ", r, 
   #            "\nthe count table of test reject no correlation is:\n"))
@@ -251,11 +259,13 @@ CorTestRep <- function(n, size, r, alpha){
 }
 ```
 
-```{r rejtable, echo=FALSE, warning=FALSE}
+下表是模擬10000次抽樣，分別進行Pearson Correlation test, Spearson Correlation test, Permutation，檢定為顯著的次數，同時考慮了相關係數為0.2或0.8，樣本數為10。由於Permutation test若考慮全部可能的組合會造成計算上的負擔，因為組合數和樣本數呈階乘關係，因此這裡使用的是抽取可能的組合，用以估計p-value。
+
+```{r 3.6, echo=FALSE, warning=FALSE}
 set.seed(SEED)
 rbind(
-  `r=0.2` = CorTestRep(n = 100, size = 10, r = 0.2, alpha = 0.05),
-  `r=0.8` = CorTestRep(n = 100, size = 10, r = 0.8, alpha = 0.05)) %>% 
+  `r=0.2` = CorTestRep(n = 1000, size = 10, r = 0.2, alpha = 0.05),
+  `r=0.8` = CorTestRep(n = 1000, size = 10, r = 0.8, alpha = 0.05)) %>% 
   kable(caption = "Reject Frequency Table of Correlation Test")
 ```
 
@@ -267,7 +277,7 @@ rbind(
     populations.(Note: The number of replications shall be at least
     10,000.)
 
-```{r echo=FALSE}
+```{r 4.1, echo=FALSE}
 ###### 4. ##########
 MWW <- function(x, y) {
   n_1 <- length(x)
@@ -323,7 +333,9 @@ observations and then see if the bootstrap variance converges as the
 number of replications increases. (Note: You also need to compare your
 results with that of population.)
 
-```{r law82, echo=FALSE}
+首先我們直接計算母體的相關係數，用來和Bootstrap模擬比較，母體的相關係數是0.76。
+
+```{r 5.1, echo=FALSE}
 data("law82")
 pop.cor <- cor(law82$LSAT, law82$GPA)
 reps <- c(50, 100, 1000, 10000)
@@ -331,7 +343,7 @@ obsers <- c(10, 15, 20, 25)
 print(paste("population correlation is", round(pop.cor, 4)))
 ```
 
-```{r BootStrapCor, include=FALSE}
+```{r 5.2, include=FALSE}
 BootStrapCor <- function(n, size, val = "sd"){
   obs <- law82[sample(nrow(law82), size = size, replace = FALSE), c("LSAT", "GPA")]
   cor_b <- replicate(n = n, {
@@ -349,18 +361,23 @@ BootStrapCor <- function(n, size, val = "sd"){
 }
 ```
 
-```{r bostp corstd, echo=FALSE}
+Bootstrap方法是先在母體抽出一小部分作為樣本，再根據樣本重複抽取。我們會同時測試不同的樣本數以及重複次數，觀察標準差是否逐漸降低，也就是有收斂的傾向。本次會分別抽取10、15、20、25個樣本，再分別重複抽取50、100、1000、10000次，記錄其標準差以及平均數。
+
+下表是重複次數和樣本數的標準差矩陣，我們可以觀察到隨著重複次數提高，標準差有逐漸降低的趨勢，但並不是絕對的下降，有蠻高的不確定性，若重複次數再提高的話可能會有更明顯的效果。
+```{r 5.3, echo=FALSE}
 set.seed(SEED)
 res <- outer(reps, obsers,
              Vectorize(function(x, y) BootStrapCor(n = x, size = y)))
-rownames(res_cor) <- paste0("rep=", reps)
-colnames(res_cor) <- paste0("obs=", obsers)
-res_cor %>% 
+rownames(res) <- paste0("rep=", reps)
+colnames(res) <- paste0("obs=", obsers)
+res %>% 
   kable(digits = 4, 
         caption = "Std Deviation Matrix Given Replicate Time and Sample Observation")
 ```
 
-```{r bostp cor, echo=FALSE}
+下表是重複次數和樣本數的相關係數矩陣，可以看到在樣本數較高時，估計值較為接近，估計的差異只有大約0.2，而當樣本數只有10時，估計值的差異達到0.6，因此可以說明樣本數提高會得到較為穩定的估計。
+
+```{r 5.4, echo=FALSE}
 set.seed(SEED)
 res_cor <- outer(reps, obsers,
                  Vectorize(function(x, y) BootStrapCor(n = x, size = y, val = "corr")))
@@ -387,7 +404,7 @@ Are the two teaching methods equivalent in result? You need to use
 permutation test, (parametric and non-parametric) bootstrap, and
 parametric test, and then compare their differences in testing.
 
-```{r echo=FALSE}
+```{r 6.1, echo=FALSE}
 ###### 6. ##########
 
 conventional <- c(65, 79, 90, 75, 61, 85, 98, 80, 97, 75)
@@ -419,7 +436,7 @@ test時，我們先計算出new跟conventional的平均值差異，然後在將�
 =
 0.05，不拒絕虛無假設，也就是我們沒有足夠證據顯示，new這組資料的平均值大於conventional。
 
-```{r echo=FALSE}
+```{r 6.2, echo=FALSE}
 ## non-parametric bootstrap test. ######
 t_1 <- NULL
 for (i in 1:10000) {
@@ -434,7 +451,7 @@ for (i in 1:10000) {
 SEED <- 123
 hist(t_1, main = "mean difference in 10,000 times", xlab = "Mean difference")
 
-cat("new跟conventiol平均值差異的95%信賴區間為:\n")
+cat("95% Confidence Interval of Difference of Mean between new and convention:\n")
 c((mean(new) - mean(conventional)) - qt(0.975, 18)*sd(t_1),
   (mean(new) - mean(conventional)) + qt(0.975, 18)*sd(t_1))
 ```
@@ -442,7 +459,7 @@ c((mean(new) - mean(conventional)) - qt(0.975, 18)*sd(t_1),
 進行non-parametric bootstrap
 test時，我們會各自在new跟conventional這兩組資料，隨機抽出並放回各取出10個樣本，並計算這兩組樣本的平均值差異，重複模擬10,000次，從圖中可以看到平均值差異大多落在0\~10之間，透過模擬結果，new跟conventional的平均值差異95%信賴區間包含0，也就是說，我們沒有足夠證據顯示，new這組資料的平均值大於conventional。
 
-```{r echo=FALSE}
+```{r 6.3, echo=FALSE}
 ## parametric bootstrap test. ######
 t_2 <- NULL
 for (i in 1:10000) {
@@ -457,7 +474,7 @@ for (i in 1:10000) {
 SEED <- 123
 hist(t_2, main = "mean difference in 10,000 times", xlab = "Mean difference")
 
-cat("new跟conventiol平均值差異的95%信賴區間為:\n")
+cat("95% Confidence Interval of Difference of Mean between new and conventiol: \n")
 c((mean(rnorm_new) - mean(rnorm_con)) - qt(0.975, 18)*sd(t_2),
   (mean(rnorm_new) - mean(rnorm_con)) + qt(0.975, 18)*sd(t_2))
 ```
@@ -465,7 +482,7 @@ c((mean(rnorm_new) - mean(rnorm_con)) - qt(0.975, 18)*sd(t_2),
 進行parametric bootstrap
 test時，我們會各自在new跟conventional這兩組資料，計算期望值跟標準差，作為兩個常態母體的參數，並從這兩個常態分配隨機抽出各10個樣本，並計算這兩組樣本的平均值差異，重複模擬10,000次，從圖中可以看到平均值差異大多落在-2\~12之間，透過模擬結果，new跟conventional的平均值差異95%信賴區間不包含0，也就是說，我們有足夠證據顯示，new這組資料的平均值大於conventional。
 
-```{r echo=FALSE}
+```{r 6.4, echo=FALSE}
 t.test(new, conventional, paired = T, alternative = "two.sided")
 ```
 
@@ -479,5 +496,27 @@ test的結果顯示，new這組資料的平均值大於conventional是顯著的�
 
 ### R code
 
-```{r ref.label=c("stack data", "Mylm", "lm", "Mylm coef"), echo=TRUE, eval=FALSE}
+### question 1
+```{r ref.label=c("1.1", "1.2", "1.3", "1.4"), echo=TRUE, eval=FALSE}
+```
+
+### question 2
+
+```{r ref.label=c("2.1"), echo=TRUE, eval=FALSE}
+```
+
+### question 3
+```{r ref.label=c("3.1", "3.2", "3.3", "3.4", "3.5", "3.6"), echo=TRUE, eval=FALSE}
+```
+
+### question 4
+```{r ref.label=c("4.1"), echo=TRUE, eval=FALSE}
+```
+
+### question 5
+```{r ref.label=c("5.1", "5.2", "5.3", "5.4"), echo=TRUE, eval=FALSE}
+```
+
+### question 6
+```{r ref.label=c("6.1", "6.2", "6.3", "6.4"), echo=TRUE, eval=FALSE}
 ```
