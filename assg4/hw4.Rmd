@@ -32,6 +32,47 @@ library(knitr)
 
 ## Question 1
 
+Suppose the central death rate $m_x$ = 0.04. Compute the mortality rate
+$q_x$ under the uniform death distribution, constant force, and
+hyperbolic assumption.
+
+從資料來源中，可以得到各種假設下$m_x$和$q_x$的關係式，接著各定義
+一組函數，用來計算$m_x$和$q_x$之間的平方差，然後使用nlminb函數找固定
+$m_x$下，最小化平方差的$q_x$。
+
+資料來源:
+<https://users.stat.ufl.edu/~rrandles/sta4930/4930lectures/chapter3/chapter3R.pdf>
+
+#### Hyperbolic
+
+```{r 1.1, echo=FALSE, message=FALSE, warning=FALSE}
+Hyperbolic <- function(q_x) {
+  (-q_x^2/((1 - q_x)*log(1 - q_x)) - 0.04)^2}
+
+nlminb(start = 0.04, objective = Hyperbolic)
+```
+
+#### UDD
+
+```{r 1.2, echo=FALSE, message=FALSE, warning=FALSE}
+UniDenth <- function(q_x) {
+  (q_x/(1 - (1/2)*q_x) - 0.04)^2}
+
+nlminb(start = 0.04, objective = UniDenth)
+```
+
+#### Constant Force
+
+```{r 1.3, echo=FALSE, message=FALSE, warning=FALSE}
+ConForce <- function(q_x) {
+  (-log(1 - q_x) - 0.04)^2}
+
+nlminb(start = 0.04, objective = ConForce)
+```
+
+從估計結果來看，表現最好的是Hyperbolic，再來是Constant Force，最後是
+UDD，迭代次數在每種假設下均為三次。
+
 ## Question 2
 
 Try at least three different methods to find the estimates of B and C
@@ -122,6 +163,105 @@ kable(summary_est, digits = 5, caption = "Summary of three Methods of Optimizati
 
 ## Question 3
 
+Consider a multinomial observation $X = (x_1, x_2, x_3, x_4)$ with class
+probabilities given by
+$(p_1, p_2, p_3, p_4) = (\frac{2 + \theta}{4}, \frac{1 - \theta}{4}, \frac{1 - \theta}{4}, \theta)$,
+where $0 < \theta < 1$. The sample size is $n = \sum_{} x_i$ and the
+parameter $\theta$ is to be estimated from the observed frequencies
+(1997, 906, 904, 32), i.e., sample size 3839. Use the secant, Ridder's
+(or Brent's), and Newton-Raphosn methods to find the MLE (via
+$l'(\theta)$). You may choose your own starting points and convergence
+criterion (preferred $10^{-6}$ or smaller).
+
+先定義概似函數及其導數，再使用三種方法分別進行估計。
+
+1.Newton
+method:透過概似函數值及導數值迭代，收斂速度快，對初始值選擇敏感。
+2.Secant method:透過概似函數值及兩個初始值迭代，計算方便，收斂速度慢。
+
+3.Ridder method:類似於割線法，但會透過概似函數的符號變化來修正逼近值。
+
+每個方法可以制定初始值和誤差門檻，最後結果為估計值、概似函數值以及迭代次數。
+
+#### Newton method
+
+```{r 3.1, echo=FALSE, message=FALSE, warning=FALSE}
+Likelihood <- function(theta) {
+  estimator = (1997/(2 + theta)) - (1810/(1 - theta)) + 32/theta
+  return(estimator)}
+
+DerivLikeli <- function(theta) {
+  estimator = (-1997/(2 + theta)^2) + (1810/(1 - theta)^2) - 32/theta^2
+  return(estimator)}
+
+NewtonMethod <- function(estimator, threshold) {
+  e <- 1
+  iter <- 0
+  while(e > threshold) {
+    y = estimator - Likelihood(estimator)/DerivLikeli(estimator)
+    e = abs(y - estimator)
+    estimator = y
+    iter = iter + 1}
+  return(data.frame(ans = y, Likelihood = Likelihood(y), iteration = iter))}
+
+NewtonMethod(0.05, 10^-6)
+```
+
+#### Secant method
+
+```{r 3.2, echo=FALSE, message=FALSE, warning=FALSE}
+SecantMethod <- function(a, b, threshold) {
+  if(Likelihood(a)*Likelihood(b) > 0) {
+    return('No solution by SecantMethod.')}
+  
+  else{
+    iter <- 0
+    e <- 1
+    while(e > threshold) {
+      new = b - Likelihood(b)*(b - a)/(Likelihood(b) - Likelihood(a))
+      a = b
+      b = new
+      e = abs(Likelihood(new))
+      iter = iter + 1}}
+  return(data.frame(ans = new, Likelihood = Likelihood(new), iteration = iter))}
+
+SecantMethod(0.01, 0.09, 10^-6)
+```
+
+#### Ridder method
+
+```{r 3.3, echo=FALSE, message=FALSE, warning=FALSE}
+RidderMethod = function(a, b, threshold) {
+  if(Likelihood(a)*Likelihood(b) > 0) {
+    return('No solution by RidderMethod.')}
+  
+  else{
+    iter <- 0
+    e <- 1
+    while(e > threshold) {
+      c = (a + b)/2
+      new = c + (c - a)*(sign(Likelihood(a) - Likelihood(b))*Likelihood(c)) / sqrt(Likelihood(c)^2 - Likelihood(a)*Likelihood(b))
+      
+      if(Likelihood(new) < 0) {
+        a = a
+        b = new}
+      
+      else{
+        a = new
+        b = b}
+      
+      e = abs(Likelihood(new))
+      iter = iter + 1
+    }}
+  return(data.frame(ans = new, Likelihood = Likelihood(new), iteration = iter))}
+
+RidderMethod(0.01, 0.09, 10^-6)
+```
+
+三種方法的估計值差異不大，只有Newton method略為較大，從迭代次數來比較，
+使用最少次迭代的是Ridder method，再來是Newton method，最後是Secant
+method。
+
 ## Question 4
 
 Evaluate the CDF of standard normal distribution $\Phi(x)$ using the
@@ -176,6 +316,98 @@ kable(res_mci, digits = 10, caption = "Estimates with Monte-Carlo Integration")
 ```
 
 ## Question 5
+
+Evaluate the following quantity by both numerical and Monte Carlo
+integration, and compare their errors with respect to the numbers of
+observations used. Also, propose at least two simulation methods to
+reduce the variance of Monte Carlo integration and compare their
+variances. $$\theta = \int_{0}^{1} e^{x^{2}} \, dx$$
+
+Real Value: 使用integrate函數計算在範圍[0, 1]內的積分。
+
+Numerical Integration: 使用黎曼積分，將積分區域切割成多個矩形進行計算。
+Monte
+
+Carlo Integration: 通過服從0到1均勻分配的隨機樣本，帶入函數計算平均值。
+
+Antithetic Method: 透過補數，來減少蒙特卡羅積分的估計誤差與標準誤差。
+
+Stratified Sampling Method:
+將積分區間分成多個小區間，並在每個子區間內均勻抽樣。
+
+```{r 5.1, echo=FALSE, message=FALSE, warning=FALSE}
+###. Real Value
+funct = function(x) exp(x^2)
+value = round(c(integrate(funct, 0, 1))$value, 6)
+
+###. Numerical Integration
+start = 0
+NumInt = function(n) {
+  gap = 1/n
+  start = gap/2
+  for (i in 1:(n - 1)) {
+    start = c(start, i*gap + gap/2)
+  }
+  return(sum(funct(start))/n)}
+
+###. Monte Carlo Integration
+MonteCar = function(n) {
+  random = runif(n)
+  random_value = funct(random)
+  estimate = mean(random_value)
+  standerr = sd(random_value)/sqrt(n)
+  err = abs(estimate - value)
+  r1 = round(c(estimate, standerr, err), 6)
+  return(r1)}
+
+###. Antithetic Method
+AntiMeth = function(n) {
+  random = runif(n)
+  random_anti = c(random, 1 - random)
+  random_value = funct(random_anti)
+  estimate = round(mean(random_value), 6)
+  standerr = sd(funct(random) + funct(1 - random))/sqrt(2*n)
+  err = abs(estimate - value)
+  r2 = round(c(estimate, standerr, err), 6)
+  return(r2)}
+
+###. Stratified Sampling Method
+StratSamp = function(n, m, N) {
+  L = seq(0, 1, length = m + 1)
+  Vtheta_S <- matrix(0, N, 2)
+  for(i in 1:N) {
+    random_value <- funct(runif(n))
+    Vtheta_S[i,1] <- mean(random_value)
+    theta_MCJ <- c()
+    for (j in 1:m) {
+      theta_MCJ[j] <- mean(funct(runif(n/m, L[j], L[j+1])))}
+    Vtheta_S[i,2] <- mean(theta_MCJ)}
+  estimate = round(apply(Vtheta_S, 2, mean)[2], 6)
+  standerr = apply(Vtheta_S, 2, sd)[2]
+  err = abs(estimate - value)
+  r3 = round(c(estimate, standerr, err), 6)
+  return(r3)}
+
+Com = function(n) {
+  result = cbind(c(value, "", ""), c(NumInt(n), "", abs(NumInt(n) - value)),
+                                     MonteCar(n), AntiMeth(n/2), 
+                                     StratSamp(n, 4, 1000))
+  colnames(result) = c("Real Value", "Numerical ", "Monte Carlo ",
+                       "Antithetic ", "Stratified Sampling ")
+  rownames(result) = c("Estimate", "SE", "Error")
+  return(result)}
+
+set.seed(SEED)
+list('n = 50' = Com(50), 'n = 100'= Com(100),
+     'n = 500'= Com(500),'n = 1000' = Com(1000))
+```
+
+隨著觀察值的增加，四種方法的誤差都有逐漸縮小的趨勢，除了Stratified
+Sampling有時會些微增加，估計表現最好到最差的依序是Numerical
+Integration、 Stratified Sampling、Antithetic、Monte Carlo
+Integration，在變異數方面， Antithetic和Stratified
+Sampling是為了有效縮減Monte Carlo
+Integration的變異數，從結果可以看到在精確度跟準確度都獲得不錯的提升。
 
 ## Question 6
 
@@ -287,7 +519,7 @@ kable(sd_est, digits = 4, caption = "Standard Deviation of Estimates")
 
 ### question 1
 
-```{r ref.label=c("1.1", "1.2", "1.3", "1.4"), echo=TRUE, eval=FALSE}
+```{r ref.label=c("1.1", "1.2", "1.3"), echo=TRUE, eval=FALSE}
 ```
 
 ### question 2
@@ -297,7 +529,7 @@ kable(sd_est, digits = 4, caption = "Standard Deviation of Estimates")
 
 ### question 3
 
-```{r ref.label=c("3.1", "3.2", "3.3", "3.4", "3.5", "3.6"), echo=TRUE, eval=FALSE}
+```{r ref.label=c("3.1", "3.2", "3.3"), echo=TRUE, eval=FALSE}
 ```
 
 ### question 4
@@ -307,7 +539,7 @@ kable(sd_est, digits = 4, caption = "Standard Deviation of Estimates")
 
 ### question 5
 
-```{r ref.label=c("5.1", "5.2", "5.3", "5.4"), echo=TRUE, eval=FALSE}
+```{r ref.label=c("5.1"), echo=TRUE, eval=FALSE}
 ```
 
 ### question 6
