@@ -30,6 +30,10 @@ library(marqLevAlg)
 library(knitr)
 ```
 
+```{r include=FALSE}
+SEED <- 123
+```
+
 ## Question 1
 
 Suppose the central death rate $m_x$ = 0.04. Compute the mortality rate
