@@ -86,33 +86,45 @@ for the Gompertz model, $\mu_x = BC^x, x>0$, using the Taiwan data in
 class, discuss the influence of starting points to the number of
 iterations. You may choose the male data or female data.
 
-```{r 2.1, message=FALSE, warning=FALSE}
+### Solution
+
+```{r 2.1, echo=FALSE, message=FALSE, warning=FALSE}
 y3s2 <- read_ods("y3s2-00000.ods", skip = 3)
 
 colnames(y3s2)[1:4] <- c("Y", "year", "gender", "total")
 male <- unique(y3s2$gender)[3]
 
-y3s2 <- y3s2[y3s2$gender %in% c(male) & y3s2$year %in% c(2019:2021), -c(1,3,4)]
+y3s2 <- y3s2[y3s2$gender %in% c(male) & y3s2$year %in% c(2019:2021), 
+             -c(1,3,4)]
 colnames(y3s2) <- c("year", "0", "2", "7", 
                   "12", "17" , "22", "27", "32", "37",
                   "42", "47" , "52", "57", "62", "67",
                   "72", "77" , "82", "87", "92", "97", "100")
 
-y3s2_p <- transform(y3s2, `67` = as.numeric(`67`), `100` = as.numeric(`100`))
-kable(y3s2_p, digits = 1, caption = "Age Mortgage Rate in 2019-2021")
+y3s2_p <- transform(y3s2, `67` = as.numeric(`67`), 
+                    `100` = as.numeric(`100`))
+kable(y3s2_p, digits = 1, 
+      caption = "Age Mortgage Rate in 2019-2021")
 
-mr <- melt(y3s2, id = "year", variable.name = "age", value.name = "rate")
+mr <- melt(y3s2, id = "year", 
+           variable.name = "age", value.name = "rate")
 mr$age <- as.numeric(as.character(mr$age))
 mr$rate <- as.numeric(mr$rate)
 mr <- mr[mr$age != 0, ]
 mr <- data.frame(x = mr$age, y = mr$rate/1000)
 ```
 
-### Solution
+上表是各年齡組的死亡率（千分比），使用組中點做為年齡$x$，使用Gompertz
+model估計B和C。分別使用`nls`的Newton method、Levenberg-Marquardt
+Method、Steepest
+Descent進行估計，再來比較B和C的估計值、誤差平方和、以及迭代次數。由於可以得到B和C的估計值，因此可以比較樣本以及使用模型預估的死亡率，並用散布圖加上迴歸線呈現。
 
 #### Newton Method with nls
 
-```{r 2.2}
+在Newton Method中，使用`nls`估計Gompertz model
+$\mu_x=BC^x$中的係數，並使用圖表呈現。其中B的估計值是0.00013，C的估計值是1.08061。
+
+```{r 2.2, echo=FALSE}
 md4 <- nls(y ~ b * c^x, data = mr,
            start = list(b = 0.1, c = 1))
 plot(mr$x, log(mr$y),
@@ -123,10 +135,16 @@ lines(mr$x, log(predict(md4)))
 
 #### Levenberg-Marquardt Method
 
-```{r 2.3}
+使用Levenberg-Marquardt
+Method估計的B為0.00015，而C為1.07951，可以看到估計值和Newton
+method的結果相差不大，不過迭代次數是51次，是三者方法中次數最多的。
+
+```{r 2.3, echo=FALSE}
 bc0 <- c(0.1, 1)
-SSE <- function(y, x, bc){return(sum((y - (bc[1] * bc[2]^x))^2))}
-estim <- marqLevAlg(bc0, fn = SSE, x = as.matrix(mr$x), y = mr$y)
+SSE <- function(y, x, bc){
+  return(sum((y - (bc[1] * bc[2]^x))^2))}
+estim <- marqLevAlg(bc0, 
+                    fn = SSE, x = as.matrix(mr$x), y = mr$y)
 
 pred.y <- log(estim$b[1] * estim$b[2]^mr$x)
 plot(mr$x, log(mr$y),
@@ -137,7 +155,11 @@ lines(mr$x, pred.y)
 
 #### Steepest Descent
 
-```{r 2.4}
+Steepest
+Descent估計的B是0.00002，C是1.1，C的估計值和一開始提供的起始點相同，表示在C方向上並未進行更新。Steepest
+Descent的估計誤差比前兩者稍大，不過迭代次數只有2次，估計速度相當快。
+
+```{r 2.4, echo=FALSE}
 SSExy <- function(bc) {
   y <- mr$y
   x <- mr$x
@@ -155,14 +177,24 @@ lines(mr$x, pred.y)
 
 #### Summary
 
-```{r 2.5}
+下表是三個估計方法的估計結果，綜合來說LM
+method的估計效果最好，不過迭代次數相當高，總共迭代了51次，比其他兩者的高很多。而Steepest
+Descent的迭代次數最少，可是估計值和其他兩者相當不同，更有可能是收斂在局部最小的部位。
+
+以起始點討論，Newton method和LM
+method對起始點較不敏感，在合理的參數範圍內都可以收斂到相同的位置。而Steepest
+Descent對起始值相當敏感，只有一開始就在local minimum附近的位置才會收斂。
+
+```{r 2.5, echo=FALSE}
 summary_est <- rbind(
-  Newton = c(summary(md4)[["coefficients"]][,1], summary(md4)[["sigma"]], md4$convInfo[["finIter"]]),
+  Newton = c(summary(md4)[["coefficients"]][,1], 
+             summary(md4)[["sigma"]], md4$convInfo[["finIter"]]),
   LM = c(estim$b, estim$fn.value, estim$ni),
   SteepDesc = c(stpd$xmin, stpd$fmin, stpd$niter)
 )
 colnames(summary_est) <- c("B.est", "C.est", "SSE", "iter")
-kable(summary_est, digits = 5, caption = "Summary of three Methods of Optimization")
+kable(summary_est, digits = 5, 
+      caption = "Summary of three Methods of Optimization")
 ```
 
 ## Question 3
@@ -179,11 +211,12 @@ criterion (preferred $10^{-6}$ or smaller).
 
 先定義概似函數及其導數，再使用三種方法分別進行估計。
 
-1.Newton
-method:透過概似函數值及導數值迭代，收斂速度快，對初始值選擇敏感。
-2.Secant method:透過概似函數值及兩個初始值迭代，計算方便，收斂速度慢。
+1.  Newton
+    method:透過概似函數值及導數值迭代，收斂速度快，對初始值選擇敏感。
 
-3.Ridder method:類似於割線法，但會透過概似函數的符號變化來修正逼近值。
+2.  Secant method:透過概似函數值及兩個初始值迭代，計算方便，收斂速度慢。
+
+3.  Ridder method:類似於割線法，但會透過概似函數的符號變化來修正逼近值。
 
 每個方法可以制定初始值和誤差門檻，最後結果為估計值、概似函數值以及迭代次數。
 
@@ -206,7 +239,8 @@ NewtonMethod <- function(estimator, threshold) {
     e = abs(y - estimator)
     estimator = y
     iter = iter + 1}
-  return(data.frame(ans = y, Likelihood = Likelihood(y), iteration = iter))}
+  return(data.frame(ans = y, Likelihood = Likelihood(y), 
+                    iteration = iter))}
 
 NewtonMethod(0.05, 10^-6)
 ```
@@ -227,7 +261,8 @@ SecantMethod <- function(a, b, threshold) {
       b = new
       e = abs(Likelihood(new))
       iter = iter + 1}}
-  return(data.frame(ans = new, Likelihood = Likelihood(new), iteration = iter))}
+  return(data.frame(ans = new, Likelihood = Likelihood(new), 
+                    iteration = iter))}
 
 SecantMethod(0.01, 0.09, 10^-6)
 ```
@@ -244,7 +279,8 @@ RidderMethod = function(a, b, threshold) {
     e <- 1
     while(e > threshold) {
       c = (a + b)/2
-      new = c + (c - a)*(sign(Likelihood(a) - Likelihood(b))*Likelihood(c)) / sqrt(Likelihood(c)^2 - Likelihood(a)*Likelihood(b))
+      new = c + ((c - a)*(sign(Likelihood(a) - Likelihood(b))*Likelihood(c))
+                 / sqrt(Likelihood(c)^2 - Likelihood(a)*Likelihood(b)))
       
       if(Likelihood(new) < 0) {
         a = a
@@ -257,7 +293,8 @@ RidderMethod = function(a, b, threshold) {
       e = abs(Likelihood(new))
       iter = iter + 1
     }}
-  return(data.frame(ans = new, Likelihood = Likelihood(new), iteration = iter))}
+  return(data.frame(ans = new, Likelihood = Likelihood(new), 
+                    iteration = iter))}
 
 RidderMethod(0.01, 0.09, 10^-6)
 ```
@@ -275,11 +312,16 @@ $x = −6, −5, −4, −3.5, −3, −2.5, −2$.
 
 ### Solution
 
-```{r 4.1}
+我們在這裡使用Important Sampling和Monte-Carlo
+Integration估計$\Phi(x)$。每個估計式都分別使用了100、1000、5000個樣本計算估計值，在不同的樣本數下各計算1000個估計值，再來比較1000個估計值的平均數，以此來比較不同方法中，不同的$x$
+quantile以及不同樣本數的的情況下的估計表現，並且和理論值比較。
+
+```{r 4.1, echo=FALSE}
 ImportantSample <- function(x, n){
   u <- runif(n)
   y <- - (sqrt(3)/pi) * log((1 + exp(-pi*x/sqrt(3))) / u - 1)
-  gy <- (pi * exp(-pi*y/sqrt(3))) / (sqrt(3) * (1 + exp(-pi*y/sqrt(3)))^2)
+  gy <- ((pi * exp(-pi*y/sqrt(3))) / 
+           (sqrt(3) * (1 + exp(-pi*y/sqrt(3)))^2))
   phiy <- dnorm(y)
   est <- ((1/n) / (1 + exp(-pi*x/sqrt(3)))) * sum(phiy / gy)
   return(est)
@@ -291,32 +333,108 @@ MCInteg <- function(x, n){
   est <- sum(y) / n
   return(est)
 }
+
+AntMCInteg <- function(x, n){
+  u <- runif(n, 1/x, 0)
+  x_u <- 1/x - u
+  u2 <- c(u, x_u)
+  y <- (1 / (sqrt(2*pi))) * exp(-1/(2*u2^2)) / (abs(x)*u2^2)
+  est <- sum(y) / (2*n)
+  return(est)
+}
+
+x <- c(-6, -5, -4, -3.5, -3, -2.5, -2)
+n <- c(100, 1000, 5000)
 ```
 
 #### Important Sampling
 
-```{r 4.2}
-x <- c(-6, -5, -4, -3.5, -3, -2.5, -2)
-n <- c(100, 1000, 5000)
-res_is <- outer(x, n, Vectorize(function(x, n){ImportantSample(x = x, n = n)}))
+在Important
+Sampling中，在各種樣本數以及$x$的情況下，估計值都相當接近理論值。
 
+```{r 4.2, echo=FALSE}
+res_is <- outer(x, n, Vectorize(function(x, n){
+  mean(replicate(1000, ImportantSample(x = x, n = n)))}))
 res_is <- cbind(res_is, pnorm(x))
-dimnames(res_is) <- list(paste0("x=", x), c(paste0("n=", n), "pnorm"))
-
-kable(res_is, digits = 10, caption = "Estimates with Important Sampling")
+dimnames(res_is) <- list(paste0("x=", x), 
+                         c(paste0("n=", n), "pnorm"))
+kable(res_is, digits = 10, 
+      caption = "Mean of Estimates with Important Sampling")
 ```
 
 #### Monte Carlo Integration
 
-```{r 4.3}
-x <- c(-6, -5, -4, -3.5, -3, -2.5, -2)
-n <- c(100, 1000, 5000)
-res_mci <- outer(x, n, Vectorize(function(x, n){MCInteg(x = x, n = n)}))
+在Monte Carlo
+Integration中，隨著樣本數越大，估計值的平均數有更接近理論值的傾向。
 
+```{r 4.3, echo=FALSE}
+res_mci <- outer(x, n, Vectorize(function(x, n){
+  mean(replicate(1000, MCInteg(x = x, n = n)))}))
 res_mci <- cbind(res_mci, pnorm(x))
-dimnames(res_mci) <- list(paste0("x=", x), c(paste0("n=", n), "pnorm"))
+dimnames(res_mci) <- list(paste0("x=", x), 
+                          c(paste0("n=", n), "pnorm"))
+kable(res_mci, digits = 10, 
+      caption = "Mean of Estimates with Monte-Carlo Integration")
+```
 
-kable(res_mci, digits = 10, caption = "Estimates with Monte-Carlo Integration")
+#### Antithetic Monte Carlo Integration
+
+在Antithetic Monte Carlo
+Integration中，隨著樣本數越大，估計值的平均數有更接近理論值的傾向，整體表現相當接近一般的Monte
+Carlo Integration。
+
+```{r 4.4, echo=FALSE}
+res_amci <- outer(x, n, Vectorize(function(x, n){
+  mean(replicate(1000, AntMCInteg(x = x, n = n)))}))
+res_amci <- cbind(res_amci, pnorm(x))
+dimnames(res_amci) <- list(paste0("x=", x), 
+                           c(paste0("n=", n), "pnorm"))
+kable(res_amci, digits = 10, 
+      caption = "Mean of Estimates with Antithetic Monte-Carlo Integration")
+```
+
+#### Summary of Standard Deviation
+
+在樣本數為100和5000的情況下，Important
+Sampling的標準差都比兩種Monte-Carlo Integration還要低。在兩個Monte-Carlo
+Integration方法中，使用Antithetic
+method的標準差比未使用還要低，因為Antithetic的效果相當於增加一倍樣本，因此變異數會大約呈現2倍的關係。
+
+```{r 4.5, echo=FALSE}
+n <- 100
+sd_is <- outer(x, n, Vectorize(function(x, n){
+  sd(replicate(1000, ImportantSample(x = x, n = n)))}))
+sd_mci <- outer(x, n, Vectorize(function(x, n){
+  sd(replicate(1000, MCInteg(x = x, n = n)))}))
+sd_amci <- outer(x, n, Vectorize(function(x, n){
+  sd(replicate(1000, AntMCInteg(x = x, n = n)))}))
+
+summary_sd <- cbind(Important = sd_is,
+      MCInteg = sd_mci,
+      AntiMCInteg = sd_amci)
+
+colnames(summary_sd) <- c("ImportantSample", "MCInteg", "AntMCInteg")
+row.names(summary_sd) <- paste0("x=", x)
+kable(summary_sd, digits = 10, 
+      caption = "Standard Deviation of Estimates with n=100")
+```
+
+```{r 4.6, echo=FALSE}
+n <- 5000
+sd_is <- outer(x, n, Vectorize(function(x, n){
+  sd(replicate(1000, ImportantSample(x = x, n = n)))}))
+sd_mci <- outer(x, n, Vectorize(function(x, n){
+  sd(replicate(1000, MCInteg(x = x, n = n)))}))
+sd_amci <- outer(x, n, Vectorize(function(x, n){
+  sd(replicate(1000, AntMCInteg(x = x, n = n)))}))
+
+summary_sd <- cbind(Important = sd_is,
+      MCInteg = sd_mci,
+      AntiMCInteg = sd_amci)
+
+colnames(summary_sd) <- c("ImportantSample", "MCInteg", "AntMCInteg")
+row.names(summary_sd) <- paste0("x=", x)
+kable(summary_sd, digits = 10, caption = "Standard Deviation of Estimates with n=5000")
 ```
 
 ## Question 5
@@ -327,17 +445,19 @@ observations used. Also, propose at least two simulation methods to
 reduce the variance of Monte Carlo integration and compare their
 variances. $$\theta = \int_{0}^{1} e^{x^{2}} \, dx$$
 
-Real Value: 使用integrate函數計算在範圍[0, 1]內的積分。
+-   Real Value: 使用integrate函數計算在範圍[0, 1]內的積分。
 
-Numerical Integration: 使用黎曼積分，將積分區域切割成多個矩形進行計算。
-Monte
+-   Numerical Integration:
+    使用黎曼積分，將積分區域切割成多個矩形進行計算。
 
-Carlo Integration: 通過服從0到1均勻分配的隨機樣本，帶入函數計算平均值。
+-   Monte Carlo Integration:
+    通過服從0到1均勻分配的隨機樣本，帶入函數計算平均值。
 
-Antithetic Method: 透過補數，來減少蒙特卡羅積分的估計誤差與標準誤差。
+-   Antithetic Method:
+    透過補數，來減少蒙特卡羅積分的估計誤差與標準誤差。
 
-Stratified Sampling Method:
-將積分區間分成多個小區間，並在每個子區間內均勻抽樣。
+-   Stratified Sampling Method:
+    將積分區間分成多個小區間，並在每個子區間內均勻抽樣。
 
 ```{r 5.1, echo=FALSE, message=FALSE, warning=FALSE}
 ###. Real Value
@@ -408,8 +528,8 @@ list('n = 50' = Com(50), 'n = 100'= Com(100),
 
 隨著觀察值的增加，四種方法的誤差都有逐漸縮小的趨勢，除了Stratified
 Sampling有時會些微增加，估計表現最好到最差的依序是Numerical
-Integration、 Stratified Sampling、Antithetic、Monte Carlo
-Integration，在變異數方面， Antithetic和Stratified
+Integration、Stratified Sampling、Antithetic、Monte Carlo
+Integration，在變異數方面，Antithetic和Stratified
 Sampling是為了有效縮減Monte Carlo
 Integration的變異數，從結果可以看到在精確度跟準確度都獲得不錯的提升。
 
@@ -456,7 +576,7 @@ $$\hat{\theta}_1 = \frac{1}{n}\sum_{i=1}^nI(X_i \geq 0.89) \text{, where } X_i \
 
 $$\hat{\theta}_4 =  \frac{1}{0.89n}\sum_{i=1}^n\frac{1}{\sqrt{2\pi}}e^{-\frac{1}{2Y_i^2}}\text{, where } Y_i \sim U\left(\frac{1}{0.89}, 0\right)$$
 
-```{r 6.1}
+```{r 6.1, include=FALSE}
 lambda <- 1
 num <- 5
 critical <- 21.6
@@ -495,24 +615,37 @@ EstTheta <- function(Rtheta, n, std_c, time = 1000, var = TRUE){
   }
 }
 
-Rtheta_list <- c(rtheta1=Rtheta1, rtheta2=Rtheta2, rtheta3=Rtheta3, rtheta4=Rtheta4)
+Rtheta_list <- c(rtheta1=Rtheta1, rtheta2=Rtheta2, 
+                 rtheta3=Rtheta3, rtheta4=Rtheta4)
 n <- c(100, 1000, 5000)
 ```
 
 #### Mean of Estimate
 
-```{r 6.2}
+下表是各種估計方法的估計值平均數，四種方法的估計值平均數都相當接近。
+
+```{r 6.2, echo=FALSE}
 mean_est <- outer(n, Rtheta_list, 
-      Vectorize(function(n, Rtheta){EstTheta(Rtheta, n = n, std_c = std_c, var = FALSE)}))
-dimnames(mean_est) <- list(paste0("N=", n), paste("method", 1:4))
+      Vectorize(function(n, Rtheta){
+        EstTheta(Rtheta, n = n, std_c = std_c, var = FALSE)}))
+dimnames(mean_est) <- list(paste0("N=", n), 
+                           paste("method", 1:4))
 kable(mean_est, digits = 4, caption = "Mean of Estimates")
 ```
 
 #### Standard Deviation of Estimate
 
-```{r 6.3}
+隨著樣本數提高，估計值的標準差都下降非常多。而method
+3是標準差最低的方法，因為將normal variable轉換成uniform variable。method
+4也是使用uniform variable，不過變數是method
+3中的x取倒數，由於$\frac{1}{0.89} > 0.89$，也就是method
+4中的隨機變數是來自$\text{Unif}\left(0, \frac{1}{0.89}\right)$，所以標準差會比method
+3大。
+
+```{r 6.3, echo=FALSE}
 sd_est <- outer(n, Rtheta_list,
-                Vectorize(function(n, Rtheta){EstTheta(Rtheta, n = n, std_c = std_c)}))
+                Vectorize(function(n, Rtheta){
+                  EstTheta(Rtheta, n = n, std_c = std_c)}))
 dimnames(sd_est) <- list(paste0("N=", n), paste("method", 1:4))
 kable(sd_est, digits = 4, caption = "Standard Deviation of Estimates")
 ```
@@ -538,7 +671,7 @@ kable(sd_est, digits = 4, caption = "Standard Deviation of Estimates")
 
 ### question 4
 
-```{r ref.label=c("4.1", "4.2", "4.3"), echo=TRUE, eval=FALSE}
+```{r ref.label=c("4.1", "4.2", "4.3", "4.4", "4.5", "4.6"), echo=TRUE, eval=FALSE}
 ```
 
 ### question 5
