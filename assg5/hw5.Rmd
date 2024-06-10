@@ -30,6 +30,11 @@ library(KernSmooth)
 library(broom)
 library(magrittr)
 library(igraph)
+library(lubridate)
+require(graphics)
+library(smoothr)
+library(gplots)
+library(MCMCpack)
 ```
 
 ```{r include=FALSE}
@@ -38,14 +43,12 @@ SEED <- 123
 
 ## Question 1
 
-First, simulate 100 observations from a mixed distribution of N(−2,1) and N(2,1),
-each with probability 0.5. Then, use at least 3 density estimating methods to
-smooth the observations. You need to specify the parameters in the smoothing
-methods, and compare the results.
+First, simulate 100 observations from a mixed distribution of N(−2,1)
+and N(2,1), each with probability 0.5. Then, use at least 3 density
+estimating methods to smooth the observations. You need to specify the
+parameters in the smoothing methods, and compare the results.
 
-
-
-```{r 1.1, echo=FALSE, message=FALSE, warning=FALSE}
+```{r 1.1, echo=FALSE, message=FALSE, warning=FALSE, out.height = '30%', fig.align='center'}
 set.seed(SEED)
 random_unif = runif(100)
 random_norm1 = rnorm(100, -2, 1)
@@ -131,19 +134,103 @@ legend(1,0.3,c("histogram(h = 0.8)","naive(h = 0.8)","kernel(h = 0.8)")
        ,col=c(1,2,4),lty = c(1:3),cex = 0.8)
 ```
 
-我們使用了histogram、naïve與normal kernel三種估計密度函數的方法，h均設置為0.8，可以發現histogram的震盪幅度最大，
+我們使用了histogram、naïve與normal
+kernel三種估計密度函數的方法，h均設置為0.8，可以發現histogram的震盪幅度最大，
 naïve則可看出資料的局部特性，而normal kernel最平滑。
 
 ## Question 2
 
+Crime data are available in many countries and we can use them the
+explore whether there are hot spots and/or peak seasons. Explore the
+reported cases of stolen motorcycles provided by Taipei City and
+evaluate which month(s) has the highest reported cases of stolen
+motorcycles (via density estimation methods). (Bonus: Explore if there
+are hot spots in stolen motorcycles.)
+
+```{r 2.1, echo=FALSE, out.height = '30%', fig.align='center'}
+# motor series plot
+motor <- read_excel("motor_bikes.xlsx",
+                    sheet = "motorcycles")
+
+colnames(motor) <- c("pno", "case", "date", "time", "location")
+motor[motor$date == "110420", "date"] <- 1110420
+
+motor <- mutate(motor,
+                year = as.numeric(substr(date, 1, 3)) + 1911,
+                month = as.numeric(substr(date, 4, 5)),
+                day = as.numeric(substr(date, 6, 7))) %>% 
+  mutate(date = ymd(sprintf("%04d%02d%02d", year, month, day))) %>% 
+  mutate(mon_num = interval(min(date), date) %/% months(1) + 1)
+
+st_num <- table(motor$mon_num) %>% 
+  data.frame() %>% 
+  mutate(Var1 = as.numeric(Var1))
+colnames(st_num) <- c("mon", "num")
+
+num_ts <- ts(table(motor$mon_num))
+num_m <- as.matrix(st_num)
+ts.plot(num_ts, xlab = "month", ylab = "frequence", 
+        main = "Number of Stolen Motorcycles each Month")
+```
+
+### Kernel Smooth
+
+下圖呈現了使用不同的bandwidth的Kernel smoother所估計的密度函數。可以看到在`bandwidth=10`時，估計密度函數保留了多數的特徵，不過由於不夠平滑，容易受到個別樣本的影響，較難看出整體的分布情況，因此需要進一步加大bandwidth。隨著bandwidth的提高，估計函數也更加平滑，可以看出整體的趨勢。
+```{r 2.2, echo=FALSE, out.height = '30%', fig.align='center'}
+# kernel smooth
+
+num_smooth_h10 <- smooth_ksmooth(num_m, bandwidth = 10)
+num_smooth_h20 <- smooth_ksmooth(num_m, bandwidth = 20)
+num_smooth_h60 <- smooth_ksmooth(num_m, bandwidth = 60)
+num_smooth_h40 <- smooth_ksmooth(num_m, bandwidth = 40)
+
+plot(st_num$mon, st_num$num,
+     main = "Smoothed Data with Kernel Smoother",
+     xlab = "month", ylab = "frequence")
+lines(num_smooth_h10, lty = 2)
+lines(num_smooth_h20, lty = 3)
+lines(num_smooth_h40, lty = 4)
+lines(num_smooth_h60, lty = 5)
+
+legend("topright", legend = c("h=10", "h=20", "h=40", "h=60"),
+       lty = c(2, 3, 4, 5), lwd = 2)
+```
+
+我們使用`bandwidth=60`的Kernel Smoother的估計結果尋找其函數值最高的月份，結果顯示根據smooth的結果，2018年8月為最高通報數量的月份。
+```{r 2.3, echo=FALSE}
+# max month
+max_mon <- num_smooth_h60[which.max(num_smooth_h60[,2]), 1]
+print(paste("Highest month is", (min(motor$date) + months(as.integer(max_mon)))))
+```
+### Spline and LOWESS
+另外我們也分別使用Smoothing Spline以及LOWESS的方法估計密度函數。
+
+```{r 2.4, echo=FALSE, out.height = '30%', fig.align='center'}
+# spline and LOWESS
+num_spline <- smooth.spline(num_m)
+num_lowess <- lowess(num_m)
+
+plot(num ~ mon, data = num_m, 
+     main = "Smoothed Data with Spline and LOWESS",
+     xlab = "month", ylab = "frequence")
+lines(num_spline, lty = 2, lwd = 2)
+lines(num_lowess, lty = 3, lwd = 2)
+legend("topright", legend = c("spline", "LOWESS"),
+       lty = c(2, 3), lwd = 2)
+```
+
+
 ## Question 3
 
-Let $x$ be 100 equally spaced points on [0,2$\pi$] and generate random sample
-$y_i$ = sin$x_i$ + $\epsilon_i$ with $\epsilon_i$ ~ N(0,0.09). Apply at least 3 linear smoothers and compare the differences, with respect to mean squares error (i.e., bias$^2$ and variance) from 1,000 simulation runs.
+Let $x$ be 100 equally spaced points on [0,2$\pi$] and generate random
+sample $y_i$ = sin$x_i$ + $\epsilon_i$ with $\epsilon_i$ \~ N(0,0.09).
+Apply at least 3 linear smoothers and compare the differences, with
+respect to mean squares error (i.e., bias$^2$ and variance) from 1,000
+simulation runs.
 
 #### kernel smooth
 
-```{r 3.1, echo=FALSE, message=FALSE, warning=FALSE}
+```{r 3.1, echo=FALSE, message=FALSE, warning=FALSE, fig.align='center', out.height = '30%'}
 set.seed(SEED)
 a <- seq(0, 2*pi, length = 100)
 b <- sin(a) + rnorm(100, 0, 0.09)
@@ -178,13 +265,13 @@ cat("MSE of kernel smooth:", MSE)
 
 #### LOWESS
 
-```{r 3.2, echo=FALSE, message=FALSE, warning=FALSE}
+```{r 3.2, echo=FALSE, message=FALSE, warning=FALSE, fig.align='center', out.height = '30%'}
 set.seed(SEED)
 a <- seq(0, 2*pi, length = 100)
 b <- sin(a) + rnorm(100, 0, 0.09)
 c <- sin(a)
 
-data <- lowess(x = a, y = b, f = 0.23) %>% as.data.frame()
+data <- lowess(x = a, y = b, f = 0.23)[c("x", "y")] %>% as.data.frame()
 data <- cbind(b,c,data) %>% as.data.frame()
 ggplot(data,aes(x = x))+ labs(title = "LOWESS smooth method", x = "x", y = "sin(x)") +
   geom_point(aes(y = b)) +
@@ -214,7 +301,7 @@ cat("MSE of LOWESS:", MSE)
 
 #### Running means
 
-```{r 3.3, echo=FALSE, message=FALSE, warning=FALSE}
+```{r 3.3, echo=FALSE, message=FALSE, warning=FALSE, fig.align='center', out.height = '30%'}
 set.seed(SEED)
 a <- seq(0, 2*pi, length = 100)
 b <- sin(seq(0, 2*pi, length = 100)) + rnorm(100, 0, 0.09)
@@ -272,22 +359,69 @@ cat("MSE of Running mean:", MSE)
 
 使用Running means重複模擬1000次, MSE為0.004041。
 
-透過EDA與MSE比較三種方法，可以得到LOWESS Smooth所模擬出來的誤差最小，在實際EDA
-呈現上也與理論函數最為接近。
+透過EDA與MSE比較三種方法，可以得到LOWESS
+Smooth所模擬出來的誤差最小，在實際EDA 呈現上也與理論函數最為接近。
 
 ## Question 4
+
+Use `MCMCregress` in the module `MCMCpack` to obtain MCMC estimation
+of regression analysis. Duplicate the analysis in the lecture notes
+and apply the MCMC on the `bikes.csv` data. Compare your results
+with the regular simple linear regression.
+
+由體感溫度以及總騎乘人數的散佈圖可以發現似乎有一個正向的關係，但其趨勢有一點曲線的樣式，因此我們在模型中加入體感溫度的二次項，更好的擬合兩者間的相關性。
+
+```{r 4.1, echo=FALSE, message=FALSE, warning=FALSE, out.height = '30%', fig.align='center'}
+# bikes data
+bikes <- read_excel("motor_bikes.xlsx", sheet = "Bikes")
+plot(bikes$temp_feel, bikes$riders_total,
+     xlab = "feeling temperature", ylab = "total rider",
+     main = "Temperature and Rider Scatter Plot")
+```
+
+### lm
+下列為使用`lm`估計模型的結果，可以看出二次項為顯著，顯示確實有正向影響遞減的現象。
+
+```{r 4.2, echo=FALSE}
+# lm
+md1 <- lm(riders_total ~ poly(temp_feel, 2), data = bikes)
+summary(md1)
+```
+
+### MCMC
+下方結果為使用Monte-Carlo Markov Chain估計線性迴歸係數的結果，估計值和`lm`的結果相當接近，表示MCMC方法可以很有效的估計，另外的優點則是可以看到估計值的分布。
+
+```{r 4.3, echo=FALSE}
+# MCMC
+posterior <- MCMCregress(riders_total ~ poly(temp_feel, 2), 
+            b0 = 0, b1 = 0.1, sigma.mu = 5, sigma.var = 25, 
+            verbose = 0, data = bikes)
+summary(posterior)
+```
+下圖分別是模擬的結果以及係數的估計分布。
+
+```{r 4.4, echo=FALSE, out.height = '40%', fig.align='center'}
+par(mfrow=c(2,2))
+plot(posterior, density = FALSE, auto.layout = FALSE)
+```
+```{r 4.5, echo=FALSE, out.height = '40%', fig.align='center'}
+par(mfrow=c(2,2))
+plot(posterior, trace = FALSE, auto.layout = FALSE)
+```
+
+
 
 ## Question 5
 
 We will apply Bayesian computing (Normal + Normal → Normal) to construct
-Taiwan’s life tables, use Taiwan’s mortality data in 2020. Try different prior
-distributions and compare your analysis results to the official abridged life tables.
-For example, you may treat the official life table as the prior. Also, you need to
-specify the parameters used.
+Taiwan's life tables, use Taiwan's mortality data in 2020. Try different
+prior distributions and compare your analysis results to the official
+abridged life tables. For example, you may treat the official life table
+as the prior. Also, you need to specify the parameters used.
 
 ```{r 5.1, echo=FALSE, message=FALSE, warning=FALSE}
-life_table_df <- read_excel('2020生命表.xlsx', col_names = FALSE)
-mortality_df <- read_excel('2020死亡率.xlsx')
+life_table_df <- read_excel('2020_birth.xlsx', col_names = FALSE)
+mortality_df <- read_excel('2020_death.xlsx')
 
 
 
@@ -346,16 +480,59 @@ cat("Suppose alpha_prior = 2 and beta_prior = 5, error:",
     BetaBinomial(2, 5), "\n")
 ```
 
-我們使用兩種組合來進行貝氏計算，分別是Normal + Normal以及Beta + Binomial，
-在Normal + Normal的部分，我們可以調整不同的先驗分配變異數與實際資料變異數來分配
+我們使用兩種組合來進行貝氏計算，分別是Normal + Normal以及Beta +
+Binomial， 在Normal +
+Normal的部分，我們可以調整不同的先驗分配變異數與實際資料變異數來分配
 權重，當先驗分配的假設變異數較小，則代表對先驗分配的相信程度越高，後驗分配會與
 先驗分配的誤差越小。
 
-在Beta + Binomial，我們可以調整先驗分配的$\alpha$與$\beta$值，在$\alpha$固定的
+在Beta +
+Binomial，我們可以調整先驗分配的$\alpha$與$\beta$值，在$\alpha$固定的
 情況下，$\beta$越大，，則代表對先驗分配的相信程度越高，後驗分配會與先驗分配的
 誤差越小。
 
 ## Question 6
+
+You can use `MCMClogit` in the module `MCMCpack` to obtain MCMC
+estimation of logistic regression analysis. Conduct the logistic
+regression via the `glm` and MCMC, using the data `birthwt`, and comment
+on the results you found. (Note: `data("birthwt", package = "MASS")`)
+
+### glm
+
+下方結果為使用懷孕時是否抽菸`smoke`、過去早產次數`ptl`、高血壓`ht`三個變數預測新生兒是否體重過輕`low`，三者的係數皆為顯著，表示皆能有效地預測新生兒體重過輕的情況。我們將`glm`的估計結果作為基準，比較和其他估計結果的差異。
+
+
+```{r 6.1, echo=FALSE}
+data("birthwt", package = "MASS")
+
+# glm
+md1 <- glm(low ~  smoke + ptl + ht, family = binomial(link = "logit"), data = birthwt)
+summary(md1)
+```
+
+### MCMC
+
+我們使用Monte-Carlo Markov Chain方法估計Logistic Regression模型，估計的結果和`glm`差異不大。
+```{r 6.2, echo=FALSE}
+# MCMC
+posterior <- MCMClogit(low ~ smoke + ptl + ht, b0=0, B0=.001,
+                       data=birthwt)
+summary(posterior)
+```
+
+除了估計的結果以外，我們還可以看到模擬的過程以及分布，下圖為MCMC的估計路徑以及估計分布。
+
+```{r 6.3, echo=FALSE, out.height = '40%', fig.align='center'}
+par(mfrow=c(2,2))
+plot(posterior, density = FALSE, auto.layout = FALSE)
+```
+```{r 6.4, echo=FALSE, out.height = '40%', fig.align='center'}
+par(mfrow=c(2,2))
+plot(posterior, trace = FALSE, auto.layout = FALSE)
+```
+
+
 
 ## Appendix
 
@@ -368,12 +545,17 @@ cat("Suppose alpha_prior = 2 and beta_prior = 5, error:",
 
 ### question 2
 
+```{r ref.label=c("2.1", "2.2", "2.3", "2.4"), echo=TRUE, eval=FALSE}
+```
+
 ### question 3
 
 ```{r ref.label=c("3.1", "3.2", "3.3"), echo=TRUE, eval=FALSE}
 ```
 
 ### question 4
+```{r ref.label=c("4.1", "4.2", "4.3", "4.4", "4.5"), echo=TRUE, eval=FALSE}
+```
 
 ### question 5
 
@@ -381,3 +563,5 @@ cat("Suppose alpha_prior = 2 and beta_prior = 5, error:",
 ```
 
 ### question 6
+```{r ref.label=c("6.1", "6.2", "6.3", "6.4"), echo=TRUE, eval=FALSE}
+```
